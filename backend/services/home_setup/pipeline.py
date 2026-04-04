@@ -14,7 +14,7 @@ from core.config import settings
 from core.logging import get_logger
 from db.repositories import homes as homes_repo
 from models.home import ObjectPosition
-from services.home_setup.bridge import compute_scene_objects
+from services.home_setup.bridge import build_scene_highlight_samples, compute_scene_objects
 from services.home_setup.modal_clients import (
     call_annotate,
     call_build_reference,
@@ -38,6 +38,10 @@ def _reference_local_path(home_id: str) -> Path:
     return Path(settings.reference_data_dir) / home_id / "reference.tar.gz"
 
 
+def _scene_annotations_local_path(home_id: str) -> Path:
+    return Path(settings.scene_data_dir) / home_id / "scene_annotations.json"
+
+
 def _save_scene_glb_local(home_id: str, glb_bytes: bytes) -> None:
     """Write GLB to local disk. Raises on failure (pipeline gate)."""
     path = _scene_glb_local_path(home_id)
@@ -52,6 +56,26 @@ def _load_scene_glb_local(home_id: str) -> bytes | None:
     if path.exists():
         return path.read_bytes()
     return None
+
+
+def _save_scene_annotations_local(home_id: str, payload: dict[str, Any]) -> None:
+    """Write lightweight object highlight data to local disk."""
+    path = _scene_annotations_local_path(home_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    logger.info("scene_annotations_saved_local", home_id=home_id, path=str(path), n_objects=len(payload.get("objects", [])))
+
+
+def _load_scene_annotations_local(home_id: str) -> dict[str, Any] | None:
+    """Read local object highlight data, or None if missing."""
+    path = _scene_annotations_local_path(home_id)
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.warning("scene_annotations_load_failed", home_id=home_id, error=str(exc))
+        return None
 
 
 def _save_reference_local(home_id: str, tar_bytes: bytes) -> None:
@@ -209,6 +233,10 @@ async def run_home_setup(home_id: str, video_bytes: bytes) -> None:
         # Phase 2b: persist GLB locally only. Scene files are too large for the
         # current Supabase Storage quota/limits on the free tier.
         _save_scene_glb_local(home_id, recon_result["glb"])
+        _save_scene_annotations_local(
+            home_id,
+            build_scene_highlight_samples(recon_result["glb"], objects),
+        )
 
         # Phase 3: build HLoc reference (sequential — needs video)
         try:
@@ -237,3 +265,38 @@ async def get_reference_tar(home_id: str) -> bytes | None:
 async def get_scene_glb(home_id: str) -> bytes | None:
     """Retrieve the reconstructed GLB for a home (for 3D viewer)."""
     return await _download_scene_glb(home_id)
+
+
+async def get_object_highlight(home_id: str, track_id: int, sample_limit: int = 768) -> dict[str, Any] | None:
+    """Retrieve sampled exact object points for annotator highlighting."""
+    payload = _load_scene_annotations_local(home_id)
+    if payload is None:
+        return None
+
+    objects = payload.get("objects")
+    if not isinstance(objects, list):
+        return None
+
+    for obj in objects:
+        if int(obj.get("track_id", -1)) != int(track_id):
+            continue
+
+        sampled_points = obj.get("sampled_points") or []
+        if sample_limit > 0 and len(sampled_points) > sample_limit:
+            step = max(1, int(len(sampled_points) / sample_limit))
+            sampled_points = sampled_points[::step][:sample_limit]
+
+        return {
+            "track_id": int(obj["track_id"]),
+            "label": str(obj.get("label") or ""),
+            "source": str(obj.get("source") or "bridge_point_indices"),
+            "point_count": int(obj.get("point_count") or len(sampled_points)),
+            "sampled_point_count": int(len(sampled_points)),
+            "sample_limit": int(sample_limit),
+            "bbox_3d_min": obj.get("bbox_3d_min"),
+            "bbox_3d_max": obj.get("bbox_3d_max"),
+            "centroid_3d": obj.get("centroid_3d"),
+            "sampled_points": sampled_points,
+        }
+
+    return None

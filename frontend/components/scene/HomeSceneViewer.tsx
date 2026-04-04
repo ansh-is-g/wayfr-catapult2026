@@ -5,16 +5,34 @@ import dynamic from "next/dynamic"
 
 import { cn } from "@/lib/utils"
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
+
 export type ObjectItem = {
   id: string
   label: string
   x: number
   y: number
   z: number
+  track_id?: number | null
   confidence: number | null
   n_observations: number
   bbox_min?: number[] | null
   bbox_max?: number[] | null
+}
+
+export type SceneDebugOptions = {
+  showBBoxes: boolean
+  showCentroids: boolean
+  showApproxRegion: boolean
+  showExactPoints: boolean
+}
+
+export type ExactObjectHighlight = {
+  trackId: number
+  label: string
+  pointCount: number
+  sampledPointCount: number
+  sampledPoints: [number, number, number][]
 }
 
 type ResolvedSceneAsset = {
@@ -27,16 +45,28 @@ export interface HomeSceneViewerProps {
   glbUrl: string
   sceneVersion?: string
   objects: ObjectItem[]
+  mode?: "default" | "annotator"
   path?: { x: number; z: number }[]
   currentStepIndex?: number
   targetLabel?: string
   height?: number
   className?: string
+  selectedObjectId?: string | null
+  hoveredObjectId?: string | null
+  onObjectSelect?: (objectId: string | null) => void
+  onObjectHover?: (objectId: string | null) => void
+  debugOptions?: Partial<SceneDebugOptions>
 }
 
 const sceneAssetCache = new Map<string, Promise<ResolvedSceneAsset>>()
 const sceneObjectUrlCache = new Map<string, ResolvedSceneAsset>()
 const LOCAL_SCENE_BROWSER_CACHE = "wayfr-local-scenes-v1"
+const DEFAULT_DEBUG_OPTIONS: SceneDebugOptions = {
+  showBBoxes: false,
+  showCentroids: false,
+  showApproxRegion: false,
+  showExactPoints: false,
+}
 
 const Scene = dynamic(() => import("./HomeSceneInner").then((m) => m.HomeSceneInner), {
   ssr: false,
@@ -137,12 +167,22 @@ export function HomeSceneViewer({
   glbUrl,
   sceneVersion,
   objects,
+  mode = "default",
   path,
   currentStepIndex,
   targetLabel,
   height = 400,
   className,
+  selectedObjectId = null,
+  hoveredObjectId = null,
+  onObjectSelect,
+  onObjectHover,
+  debugOptions,
 }: HomeSceneViewerProps) {
+  const mergedDebugOptions = useMemo(
+    () => ({ ...DEFAULT_DEBUG_OPTIONS, ...debugOptions }),
+    [debugOptions]
+  )
   const sceneKey = useMemo(
     () => buildSceneCacheKey(homeId, glbUrl, sceneVersion),
     [glbUrl, homeId, sceneVersion]
@@ -165,6 +205,19 @@ export function HomeSceneViewer({
   const resolvedScene = sceneState.key === sceneKey ? sceneState.asset : null
   const glbFailed = sceneState.key === sceneKey ? sceneState.failed : false
   const vertexCount = vertexState.key === sceneKey ? vertexState.count : 0
+  const selectedObject = useMemo(
+    () => objects.find((object) => object.id === selectedObjectId) ?? null,
+    [objects, selectedObjectId]
+  )
+  const [exactHighlightState, setExactHighlightState] = useState<{
+    key: string
+    data: ExactObjectHighlight | null
+    unavailable: boolean
+  }>({
+    key: "",
+    data: null,
+    unavailable: false,
+  })
 
   const handlePointCount = useCallback(
     (count: number) => {
@@ -217,6 +270,67 @@ export function HomeSceneViewer({
     }
   }, [glbUrl, homeId, sceneKey, sceneVersion])
 
+  useEffect(() => {
+    const trackId = selectedObject?.track_id
+    const highlightKey = homeId && trackId != null ? `${sceneKey}:${trackId}` : ""
+
+    if (mode !== "annotator" || !mergedDebugOptions.showExactPoints || !homeId || trackId == null) {
+      return
+    }
+
+    let cancelled = false
+    void fetch(`${API_URL}/api/homes/${homeId}/object-highlights/${trackId}?sample_limit=1024`, {
+      cache: "force-cache",
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Failed to load exact highlight (${response.status})`)
+        }
+
+        const payload = await response.json()
+        const sampledPoints = Array.isArray(payload.sampled_points)
+          ? payload.sampled_points
+              .map((point: unknown) => {
+                if (!Array.isArray(point) || point.length < 3) return null
+                return [Number(point[0]), Number(point[1]), Number(point[2])] as [number, number, number]
+              })
+              .filter((point: [number, number, number] | null): point is [number, number, number] => point !== null)
+          : []
+
+        if (!cancelled) {
+          setExactHighlightState({
+            key: highlightKey,
+            unavailable: false,
+            data: {
+              trackId,
+              label: String(payload.label ?? selectedObject?.label ?? ""),
+              pointCount: Number(payload.point_count ?? sampledPoints.length),
+              sampledPointCount: Number(payload.sampled_point_count ?? sampledPoints.length),
+              sampledPoints,
+            },
+          })
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setExactHighlightState({
+            key: highlightKey,
+            data: null,
+            unavailable: true,
+          })
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [homeId, mergedDebugOptions.showExactPoints, mode, sceneKey, selectedObject?.id, selectedObject?.label, selectedObject?.track_id])
+
+  const exactHighlight =
+    exactHighlightState.key === (homeId && selectedObject?.track_id != null ? `${sceneKey}:${selectedObject.track_id}` : "")
+      ? exactHighlightState.data
+      : null
+
   return (
     <div
       className={cn("relative", className)}
@@ -226,9 +340,16 @@ export function HomeSceneViewer({
         <Scene
           glbUrl={resolvedScene.url}
           objects={objects}
+          mode={mode}
           path={path}
           currentStepIndex={currentStepIndex ?? 0}
           targetLabel={targetLabel}
+          selectedObjectId={selectedObjectId}
+          hoveredObjectId={hoveredObjectId}
+          onObjectSelect={onObjectSelect}
+          onObjectHover={onObjectHover}
+          debugOptions={mergedDebugOptions}
+          exactHighlight={exactHighlight}
           onPointCount={handlePointCount}
           onGlbError={handleGlbError}
         />
@@ -239,6 +360,7 @@ export function HomeSceneViewer({
         {" · "}
         {objects.length} annotations
         {navActive ? " · navigation" : " · orbit"}
+        {mode === "annotator" ? " · annotator" : ""}
       </div>
     </div>
   )

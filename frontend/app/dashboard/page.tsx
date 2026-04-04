@@ -45,6 +45,9 @@ type ObjectItem = {
   x: number
   y: number
   z: number
+  track_id?: number | null
+  bbox_min?: number[] | null
+  bbox_max?: number[] | null
   confidence: number | null
   n_observations: number
 }
@@ -64,7 +67,18 @@ type HomeResponse = {
 }
 
 type ObjectsResponse = {
-  objects?: ObjectItem[]
+  objects?: Array<{
+    id: string
+    label: string
+    x: number
+    y: number
+    z: number
+    track_id?: number | null
+    bbox_min?: number[] | null
+    bbox_max?: number[] | null
+    confidence?: number | null
+    n_observations?: number
+  }>
 }
 
 function parseTimestamp(value: unknown) {
@@ -156,9 +170,17 @@ export default function DashboardPage() {
   const [selectedHomeId, setSelectedHomeId] = useState("")
   const [selectedHome, setSelectedHome] = useState<HomeDetail | null>(null)
   const [objects, setObjects] = useState<ObjectItem[]>([])
+  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null)
+  const [hoveredObjectId, setHoveredObjectId] = useState<string | null>(null)
   const [historyQuery, setHistoryQuery] = useState("")
   const [annotationQuery, setAnnotationQuery] = useState("")
   const [hiddenLabels, setHiddenLabels] = useState<string[]>([])
+  const [viewerDebug, setViewerDebug] = useState({
+    showBBoxes: false,
+    showCentroids: false,
+    showApproxRegion: false,
+    showExactPoints: false,
+  })
   const [homesLoading, setHomesLoading] = useState(true)
   const [homeLoading, setHomeLoading] = useState(false)
   const [homesError, setHomesError] = useState<string | null>(null)
@@ -232,7 +254,20 @@ export default function DashboardPage() {
         created_at: homeData.created_at,
         updated_at: homeData.updated_at,
       })
-      setObjects(objectData.objects ?? [])
+      setObjects(
+        (objectData.objects ?? []).map((object) => ({
+          id: object.id,
+          label: object.label,
+          x: object.x,
+          y: object.y,
+          z: object.z,
+          track_id: object.track_id ?? null,
+          bbox_min: object.bbox_min ?? null,
+          bbox_max: object.bbox_max ?? null,
+          confidence: object.confidence ?? null,
+          n_observations: object.n_observations ?? 1,
+        }))
+      )
     } catch (error: unknown) {
       if (signal?.aborted) return
       setHomeError(error instanceof Error ? error.message : "Failed to load selected home")
@@ -284,6 +319,14 @@ export default function DashboardPage() {
   useEffect(() => {
     setAnnotationQuery("")
     setHiddenLabels([])
+    setSelectedObjectId(null)
+    setHoveredObjectId(null)
+    setViewerDebug({
+      showBBoxes: false,
+      showCentroids: false,
+      showApproxRegion: false,
+      showExactPoints: false,
+    })
   }, [selectedHomeId])
 
   useEffect(() => {
@@ -340,6 +383,21 @@ export default function DashboardPage() {
     })
   }, [annotationQuery, hiddenLabels, objects])
 
+  const selectedObject = useMemo(
+    () => filteredObjects.find((object) => object.id === selectedObjectId) ?? null,
+    [filteredObjects, selectedObjectId]
+  )
+
+  useEffect(() => {
+    if (selectedObjectId && !filteredObjects.some((object) => object.id === selectedObjectId)) {
+      setSelectedObjectId(null)
+    }
+
+    if (hoveredObjectId && !filteredObjects.some((object) => object.id === hoveredObjectId)) {
+      setHoveredObjectId(null)
+    }
+  }, [filteredObjects, hoveredObjectId, selectedObjectId])
+
   const selectHome = useCallback((homeId: string) => {
     setSelectedHomeId(homeId)
     setRequestedHomeId(homeId)
@@ -386,6 +444,13 @@ export default function DashboardPage() {
 
   const selectAllLabels = useCallback(() => {
     setHiddenLabels([])
+  }, [])
+
+  const toggleViewerDebug = useCallback((key: "showBBoxes" | "showCentroids" | "showApproxRegion" | "showExactPoints") => {
+    setViewerDebug((current) => ({
+      ...current,
+      [key]: !current[key],
+    }))
   }, [])
 
   const unselectAllLabels = useCallback(() => {
@@ -498,12 +563,98 @@ export default function DashboardPage() {
 
               {activeHome?.status === "ready" ? (
                 <div className="space-y-4">
+                  <div className="rounded-[24px] border border-border/60 bg-card/38 px-4 py-4 backdrop-blur-xl">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                      <div>
+                        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-mango/85">
+                          Annotation Viewer
+                        </p>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          Select an annotation from the list or click its approximate region in the scene.
+                          The mesh itself is highlighted; boxes are debug-only.
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleViewerDebug("showApproxRegion")}
+                          className={cn(
+                            "rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] transition-colors",
+                            viewerDebug.showApproxRegion
+                              ? "border-mango/35 bg-mango/10 text-mango"
+                              : "border-border/60 bg-background/40 text-muted-foreground"
+                          )}
+                        >
+                          Approx Region
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleViewerDebug("showExactPoints")}
+                          className={cn(
+                            "rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] transition-colors",
+                            viewerDebug.showExactPoints
+                              ? "border-mango/35 bg-mango/10 text-mango"
+                              : "border-border/60 bg-background/40 text-muted-foreground"
+                          )}
+                        >
+                          Exact Points
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleViewerDebug("showBBoxes")}
+                          className={cn(
+                            "rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] transition-colors",
+                            viewerDebug.showBBoxes
+                              ? "border-mango/35 bg-mango/10 text-mango"
+                              : "border-border/60 bg-background/40 text-muted-foreground"
+                          )}
+                        >
+                          BBox
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleViewerDebug("showCentroids")}
+                          className={cn(
+                            "rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] transition-colors",
+                            viewerDebug.showCentroids
+                              ? "border-mango/35 bg-mango/10 text-mango"
+                              : "border-border/60 bg-background/40 text-muted-foreground"
+                          )}
+                        >
+                          Centroid
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span className="rounded-full border border-border/60 bg-background/44 px-3 py-1.5">
+                        Default selection: mesh focus + scene dim
+                      </span>
+                      {selectedObject ? (
+                        <span className="rounded-full border border-mango/35 bg-mango/10 px-3 py-1.5 text-mango">
+                          Selected: {selectedObject.label}
+                        </span>
+                      ) : (
+                        <span className="rounded-full border border-border/60 bg-background/44 px-3 py-1.5">
+                          No object selected
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="rounded-[32px] bg-card/40 p-1 shadow-[0_24px_80px_rgba(0,0,0,0.08)] backdrop-blur-xl dark:shadow-[0_32px_100px_rgba(0,0,0,0.28)]">
                     <HomeSceneViewer
                       homeId={activeHome.home_id}
                       glbUrl={sceneUrl}
                       sceneVersion={sceneVersion}
                       objects={filteredObjects}
+                      mode="annotator"
+                      selectedObjectId={selectedObjectId}
+                      hoveredObjectId={hoveredObjectId}
+                      onObjectSelect={setSelectedObjectId}
+                      onObjectHover={setHoveredObjectId}
+                      debugOptions={viewerDebug}
                       height={700}
                       className="rounded-[30px]"
                     />
@@ -589,13 +740,19 @@ export default function DashboardPage() {
                   visibleObjects={filteredObjects}
                   query={annotationQuery}
                   hiddenLabels={hiddenLabels}
+                  selectedObjectId={selectedObjectId}
+                  hoveredObjectId={hoveredObjectId}
                   onQueryChange={setAnnotationQuery}
                   onToggleLabel={toggleHiddenLabel}
                   onSelectAll={selectAllLabels}
                   onUnselectAll={unselectAllLabels}
+                  onObjectSelect={setSelectedObjectId}
+                  onObjectHover={setHoveredObjectId}
                   onReset={() => {
                     setAnnotationQuery("")
                     setHiddenLabels([])
+                    setSelectedObjectId(null)
+                    setHoveredObjectId(null)
                   }}
                 />
 
