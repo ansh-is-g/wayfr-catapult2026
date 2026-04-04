@@ -4,7 +4,7 @@ FastAPI server for DPVO odometry pipeline.
 Receives frames, runs DPVO on Modal for near-real-time tracking,
 uses HLoc for anchor-frame localization.
 
-Usage: PYTHONPATH=backend/pipelines python -m hloc_localization.backend.dpvo_server [--port 8091]
+Usage: python -m hloc_localization.backend.dpvo_server [--port 8091]
 
 Endpoints:
   POST /anchor       — Upload frame + select reference, localize anchor with HLoc

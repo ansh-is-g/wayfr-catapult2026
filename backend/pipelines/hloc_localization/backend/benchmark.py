@@ -2,9 +2,9 @@
 Benchmark hloc localization per-frame timing with component breakdown.
 
 Usage:
-  modal run backend/pipelines/hloc_localization/backend/benchmark.py \
+  modal run hloc_localization/backend/benchmark.py \
     --video data/IMG_4724.mov \
-    --reference backend/pipelines/hloc_localization/data/hloc_reference/IMG_4720/reference.tar.gz \
+    --reference hloc_localization/data/hloc_reference/IMG_4720/reference.tar.gz \
     --fps 2 --max-frames 10
 """
 
@@ -366,9 +366,9 @@ def main(
     Benchmark hloc localization per-frame.
 
     Usage:
-      modal run backend/pipelines/hloc_localization/backend/benchmark.py \
+      modal run hloc_localization/backend/benchmark.py \
         --video data/IMG_4724.mov \
-        --reference backend/pipelines/hloc_localization/data/hloc_reference/IMG_4720/reference.tar.gz
+        --reference hloc_localization/data/hloc_reference/IMG_4720/reference.tar.gz
     """
     video_path = pathlib.Path(video).expanduser().resolve()
     ref_path = pathlib.Path(reference).expanduser().resolve()

@@ -2,8 +2,6 @@
 
 Visual localization pipeline using [hloc](https://github.com/cvg/Hierarchical-Localization) (SuperPoint + LightGlue + PnP). Takes a reference video of a scene, builds a 3D map, then localizes new camera frames against it in 6DoF.
 
-**Layout:** this package lives at `backend/pipelines/hloc_localization/`. For `python -m hloc_localization...` commands, set `PYTHONPATH=backend/pipelines` from the repository root (see the root [README.md](../../../README.md)).
-
 ## How it works
 
 **Offline (one-time per scene, runs on Modal A100):**
@@ -22,7 +20,7 @@ Visual localization pipeline using [hloc](https://github.com/cvg/Hierarchical-Lo
 ## Structure
 
 ```
-backend/pipelines/hloc_localization/
+hloc_localization/
   backend/
     app.py              # Modal app: build_reference() + localize_frame()
     server.py           # FastAPI server with REST + WebSocket endpoints
@@ -43,24 +41,24 @@ backend/pipelines/hloc_localization/
 ### 1. Build a reference map
 
 ```bash
-modal run backend/pipelines/hloc_localization/backend/app.py --video-path data/IMG_4720.MOV
+modal run hloc_localization/backend/app.py --video-path data/IMG_4720.MOV
 ```
 
-Outputs `backend/pipelines/hloc_localization/data/hloc_reference/IMG_4720/reference.tar.gz`.
+Outputs `hloc_localization/data/hloc_reference/IMG_4720/reference.tar.gz`.
 
 ### 2. Localize frames from another video
 
 ```bash
-PYTHONPATH=backend/pipelines python -m hloc_localization.backend.debug_localize \
+python -m hloc_localization.backend.debug_localize \
   --video data/IMG_4730.MOV \
-  --reference backend/pipelines/hloc_localization/data/hloc_reference/IMG_4720/reference.tar.gz \
+  --reference hloc_localization/data/hloc_reference/IMG_4720/reference.tar.gz \
   --fps 2
 ```
 
 ### 3. View trajectory in 3D
 
 ```bash
-PYTHONPATH=backend/pipelines python -m hloc_localization.frontend.view_trajectory
+python -m hloc_localization.frontend.view_trajectory
 ```
 
 Opens a viser viewer at `http://localhost:8890` showing the GLB point cloud with camera frustums. Play/pause to animate through the trajectory. The COLMAP and GLB coordinate systems are aligned automatically via ICP.
@@ -68,7 +66,7 @@ Opens a viser viewer at `http://localhost:8890` showing the GLB point cloud with
 ### 4. Run the live server (streaming)
 
 ```bash
-PYTHONPATH=backend/pipelines python -m hloc_localization.backend.server --port 8090
+python -m hloc_localization.backend.server --port 8090
 ```
 
 Endpoints:
@@ -87,9 +85,9 @@ For real-time tracking, DPVO provides fast visual odometry anchored to world coo
 3. Umeyama similarity alignment maps DPVO trajectory → world coordinates (recovers scale)
 
 ```bash
-modal run backend/pipelines/hloc_localization/backend/dpvo_app.py \
+modal run hloc_localization/backend/dpvo_app.py \
   --video-path data/IMG_4730.MOV \
-  --reference-path backend/pipelines/hloc_localization/data/hloc_reference/IMG_4720/reference.tar.gz
+  --reference-path hloc_localization/data/hloc_reference/IMG_4720/reference.tar.gz
 ```
 
 ## Benchmarks (A100 GPU)
@@ -130,13 +128,13 @@ NetVLAD is the bottleneck — hloc re-initializes the model each frame. With mod
 
 ```bash
 # hloc per-frame benchmark
-modal run backend/pipelines/hloc_localization/backend/benchmark.py \
+modal run hloc_localization/backend/benchmark.py \
   --video data/IMG_4724.mov \
-  --reference backend/pipelines/hloc_localization/data/hloc_reference/IMG_4720/reference.tar.gz \
+  --reference hloc_localization/data/hloc_reference/IMG_4720/reference.tar.gz \
   --fps 2 --max-frames 10
 
 # DPVO per-frame benchmark
-modal run backend/pipelines/hloc_localization/backend/benchmark_dpvo.py \
+modal run hloc_localization/backend/benchmark_dpvo.py \
   --video data/IMG_4724.mov --fps 15 --max-frames 100
 ```
 

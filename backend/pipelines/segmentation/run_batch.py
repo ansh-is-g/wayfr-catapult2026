@@ -1,7 +1,7 @@
 """
 Run Grounded SAM 2 tracking on multiple videos in parallel via Modal.
 
-Usage: modal run backend/pipelines/segmentation/run_batch.py --text-prompt "person. car."
+Usage: modal run segmentation/run_batch.py --text-prompt "person. car."
 """
 
 import pathlib

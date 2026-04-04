@@ -2,8 +2,8 @@
 Offline DPVO result viewer — visualize camera poses over a point cloud.
 
 Usage:
-  PYTHONPATH=backend/pipelines python -m hloc_localization.frontend.dpvo_viewer data/mapanything/IMG_4720.glb \
-    --result backend/pipelines/hloc_localization/data/dpvo_results/IMG_4730_dpvo.json
+  python -m hloc_localization.frontend.dpvo_viewer data/mapanything/IMG_4720.glb \
+    --result hloc_localization/data/dpvo_results/IMG_4730_dpvo.json
 """
 
 import argparse

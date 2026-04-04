@@ -4,11 +4,11 @@ DPVO visual odometry on Modal — near-real-time camera tracking.
 Uses HLoc for anchor-frame localization, then DPVO for incremental pose estimation.
 All DPVO poses are aligned to world coordinates via the anchor.
 
-Deploy:  modal deploy backend/pipelines/hloc_localization/backend/dpvo_app.py
-Dev:     modal serve backend/pipelines/hloc_localization/backend/dpvo_app.py
-Run:     modal run backend/pipelines/hloc_localization/backend/dpvo_app.py \
+Deploy:  modal deploy hloc_localization/backend/dpvo_app.py
+Dev:     modal serve hloc_localization/backend/dpvo_app.py
+Run:     modal run hloc_localization/backend/dpvo_app.py \
            --video-path data/IMG_4730.MOV \
-           --reference-path backend/pipelines/hloc_localization/data/hloc_reference/IMG_4720/reference.tar.gz
+           --reference-path hloc_localization/data/hloc_reference/IMG_4720/reference.tar.gz
 """
 
 import pathlib
@@ -580,9 +580,9 @@ def main(
     Run DPVO odometry on a video with HLoc anchoring.
 
     Usage:
-      modal run backend/pipelines/hloc_localization/backend/dpvo_app.py \
+      modal run hloc_localization/backend/dpvo_app.py \
         --video-path data/IMG_4730.MOV \
-        --reference-path backend/pipelines/hloc_localization/data/hloc_reference/IMG_4720/reference.tar.gz
+        --reference-path hloc_localization/data/hloc_reference/IMG_4720/reference.tar.gz
     """
     import json
 

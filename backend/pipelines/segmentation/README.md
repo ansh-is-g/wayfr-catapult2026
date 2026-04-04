@@ -7,7 +7,7 @@ Give it a video and a text prompt, get back an annotated video with tracked boun
 ## Usage
 
 ```bash
-modal run backend/pipelines/segmentation/app.py --video-path data/IMG_4723.MOV --text-prompt "book. door. painting."
+modal run segmentation/app.py --video-path data/IMG_4723.MOV --text-prompt "book. door. painting."
 ```
 
 Outputs `_tracked.mp4` and `_detections.json` next to the input file.
@@ -24,10 +24,10 @@ Outputs `_tracked.mp4` and `_detections.json` next to the input file.
 
 ```bash
 # More detections (lower thresholds)
-modal run backend/pipelines/segmentation/app.py --video-path vid.mov --text-prompt "chair. lamp. door." --box-threshold 0.25
+modal run segmentation/app.py --video-path vid.mov --text-prompt "chair. lamp. door." --box-threshold 0.25
 
 # Detect from a later frame
-modal run backend/pipelines/segmentation/app.py --video-path vid.mov --text-prompt "person." --ann-frame-idx 30
+modal run segmentation/app.py --video-path vid.mov --text-prompt "person." --ann-frame-idx 30
 ```
 
 ### Batch (parallel)
@@ -35,7 +35,7 @@ modal run backend/pipelines/segmentation/app.py --video-path vid.mov --text-prom
 Process all `data/*.MOV` files in parallel across separate A100s:
 
 ```bash
-modal run backend/pipelines/segmentation/run_batch.py --text-prompt "book. door. painting. chair."
+modal run segmentation/run_batch.py --text-prompt "book. door. painting. chair."
 ```
 
 Results go to `data/segmentation/`.
@@ -45,7 +45,7 @@ Results go to `data/segmentation/`.
 Combines Grounded SAM 2 tracking with [Depth Anything V2](https://github.com/DepthAnything/Depth-Anything-V2) to get depth maps masked to only the segmented objects.
 
 ```bash
-modal run backend/pipelines/segmentation/depth_app.py --video-path data/IMG_4723.MOV --text-prompt "painting. chair. lamp. door."
+modal run segmentation/depth_app.py --video-path data/IMG_4723.MOV --text-prompt "painting. chair. lamp. door."
 ```
 
 Outputs to `data/segmentation/`:
@@ -58,7 +58,7 @@ Outputs to `data/segmentation/`:
 Three-panel playback (Original | Object Depth | Composite):
 
 ```bash
-python backend/pipelines/segmentation/depth_viewer.py data/segmentation/ --source-dir data/
+python segmentation/depth_viewer.py data/segmentation/ --source-dir data/
 # Open http://localhost:8080
 ```
 
@@ -68,13 +68,13 @@ Keyboard: `Space` play/pause, `←→` step, `[]` ±5 frames, `Home`/`End` first
 
 Combines all three systems (Grounded SAM 2 + Depth Anything V2 + HLoc) to predict where objects are in 3D world coordinates. Uses camera pose estimation + object depth to backproject 2D detections into 3D space.
 
-Requires a pre-built HLoc reference (see [`../hloc_localization/`](../hloc_localization/README.md)).
+Requires a pre-built HLoc reference (see `hloc_localization/`).
 
 ```bash
-modal run backend/pipelines/segmentation/locate_app.py \
+modal run segmentation/locate_app.py \
   --video-path data/IMG_4730.MOV \
   --text-prompt "painting. chair. lamp. door." \
-  --reference-path backend/pipelines/hloc_localization/data/hloc_reference/IMG_4720/reference.tar.gz \
+  --reference-path hloc_localization/data/hloc_reference/IMG_4720/reference.tar.gz \
   --localize-fps 2
 ```
 
@@ -85,10 +85,10 @@ Outputs `{stem}_objects3d.json` to `data/segmentation/` with per-object 3D posit
 Viser-based viewer with smooth camera path playback, object highlighting on the point cloud, and video panels (source, segmentation, depth):
 
 ```bash
-python backend/pipelines/segmentation/locate_viewer.py \
+python segmentation/locate_viewer.py \
   data/reconstruction/IMG_4720.glb \
   data/segmentation/IMG_4730_objects3d.json \
-  --reference backend/pipelines/hloc_localization/data/hloc_reference/IMG_4720/reference.tar.gz \
+  --reference hloc_localization/data/hloc_reference/IMG_4720/reference.tar.gz \
   --video data/IMG_4730.MOV \
   --results-dir data/segmentation/
 # Open http://localhost:8890

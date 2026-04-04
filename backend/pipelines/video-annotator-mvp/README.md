@@ -2,7 +2,7 @@
 
 Isolated MVP for one purpose: upload a video, process it through an annotation pipeline, and return a tracked output video with boxes and labels burned in.
 
-This folder lives under `backend/pipelines/` with the other Modal GPU experiments and mirrors known working patterns from [`../segmentation/`](../segmentation/README.md) tracked-video flows.
+This folder is intentionally separate from the rest of the repo and mirrors known working patterns from existing segmentation/tracked-video flows.
 
 ## What This Builds
 
@@ -101,7 +101,7 @@ For `gsam2` provider:
 ### 0) Deploy Modal app (required for modal/gsam2 providers)
 
 ```bash
-cd backend/pipelines/video-annotator-mvp
+cd video-annotator-mvp
 
 # For DETECTOR_PROVIDER=modal (YOLO on GPU):
 modal deploy modal_app.py
@@ -115,7 +115,7 @@ Redeploy after any changes to the Modal app files.
 ### 1) Backend
 
 ```bash
-cd backend/pipelines/video-annotator-mvp/backend
+cd video-annotator-mvp/backend
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -125,7 +125,7 @@ uvicorn main:app --reload --port 8100
 ### 2) Frontend
 
 ```bash
-cd backend/pipelines/video-annotator-mvp/frontend
+cd video-annotator-mvp/frontend
 python -m http.server 5175
 ```
 

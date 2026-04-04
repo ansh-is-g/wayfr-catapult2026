@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 
 JobStatus = Literal["queued", "processing", "completed", "failed"]
+ExportMode = Literal["bridge", "showcase", "both"]
 
 
 class UploadResponse(BaseModel):
@@ -15,6 +16,7 @@ class UploadResponse(BaseModel):
 class ProcessRequest(BaseModel):
     fps: int = Field(default=2, ge=1, le=30)
     conf_percentile: float = Field(default=25.0, ge=0.0, le=100.0)
+    export_mode: ExportMode = "both"
 
 
 class JobResponse(BaseModel):
@@ -25,6 +27,7 @@ class JobResponse(BaseModel):
     message: str
     original_url: str | None = None
     glb_url: str | None = None
+    showcase_glb_url: str | None = None
     viewer_ready: bool = False
     metadata: dict[str, Any] = Field(default_factory=dict)
     error: str | None = None

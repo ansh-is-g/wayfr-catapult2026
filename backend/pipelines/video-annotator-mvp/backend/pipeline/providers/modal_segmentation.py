@@ -15,9 +15,10 @@ class ModalSegmentationProvider:
 
     name = "modal"
 
-    def __init__(self, app_name: str, function_name: str) -> None:
+    def __init__(self, app_name: str, function_name: str, provider_name: str = "modal") -> None:
         self._app_name = app_name
         self._function_name = function_name
+        self.name = provider_name
 
     async def process_video(
         self,
@@ -103,7 +104,8 @@ class ModalSegmentationProvider:
         elif output_video_path.exists():
             output_video_path.unlink()
 
+        detections_json_path.write_text(detections_text)
+
         objects_detected = result.get("objects_detected", [])
         num_frames = result.get("num_frames", 0)
         return {"objects_detected": objects_detected, "num_frames": num_frames}
-

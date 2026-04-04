@@ -2,9 +2,9 @@
 Standalone DPVO result viewer with trajectory playback.
 
 Usage:
-  PYTHONPATH=backend/pipelines python3 -m hloc_localization.frontend.view_dpvo \
+  python3 hloc_localization/frontend/view_dpvo.py \
     data/mapanything/IMG_4720.glb \
-    backend/pipelines/hloc_localization/data/dpvo_results/IMG_4730_dpvo.json
+    hloc_localization/data/dpvo_results/IMG_4730_dpvo.json
 """
 import argparse
 import json

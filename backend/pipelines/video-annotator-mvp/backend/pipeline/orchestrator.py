@@ -20,11 +20,13 @@ class PipelineOrchestrator:
             return ModalSegmentationProvider(
                 app_name=self.settings.modal_app_name,
                 function_name=self.settings.modal_function_name,
+                provider_name="modal",
             )
         if name == "gsam2":
             return ModalSegmentationProvider(
                 app_name=self.settings.gsam2_app_name,
                 function_name=self.settings.gsam2_function_name,
+                provider_name="gsam2",
             )
         raise RuntimeError(f"Unknown detector provider: {name}")
 
@@ -68,4 +70,3 @@ class PipelineOrchestrator:
                 break
 
         raise RuntimeError(f"All providers failed. Last error: {last_error}")
-
