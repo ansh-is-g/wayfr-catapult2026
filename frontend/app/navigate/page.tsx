@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { Navbar } from "@/components/nav/Navbar"
 import { Button } from "@/components/ui/button"
@@ -19,8 +19,30 @@ type NavPlan = {
   instructions: string[]
   total_distance_m: number
 }
+type ObjectsResponse = {
+  objects?: Array<{
+    id: string
+    label: string
+    x: number
+    y: number
+    z: number
+    confidence?: number | null
+    n_observations?: number
+  }>
+}
+type LocalizeResponse = {
+  success?: boolean
+  tx?: number
+  ty?: number
+  tz?: number
+  error?: string
+}
 
-export default function NavigatePage() {
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Unknown error"
+}
+
+function NavigatePageContent() {
   const searchParams = useSearchParams()
   const homeId = searchParams.get("home") ?? ""
 
@@ -44,8 +66,8 @@ export default function NavigatePage() {
     setObjectsLoading(true)
     fetch(`${API_URL}/api/homes/${homeId}/objects`)
       .then((r) => r.json())
-      .then((data) => {
-        const items: ObjectItem[] = (data.objects ?? []).map((o: any) => ({
+      .then((data: ObjectsResponse) => {
+        const items: ObjectItem[] = (data.objects ?? []).map((o) => ({
           id: o.id,
           label: o.label,
           x: o.x,
@@ -57,7 +79,7 @@ export default function NavigatePage() {
         setObjects(items)
         if (items.length) setTarget(items[0].label)
       })
-      .catch((err) => setObjectsError(err.message))
+      .catch((error: unknown) => setObjectsError(getErrorMessage(error)))
       .finally(() => setObjectsLoading(false))
   }, [homeId])
 
@@ -78,8 +100,8 @@ export default function NavigatePage() {
         throw new Error(body.detail ?? `HTTP ${res.status}`)
       }
       setPlan(await res.json())
-    } catch (err: any) {
-      setPlanError(err.message)
+    } catch (error: unknown) {
+      setPlanError(getErrorMessage(error))
     } finally {
       setPlanning(false)
     }
@@ -98,14 +120,14 @@ export default function NavigatePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image_b64: b64 }),
       })
-      const data = await res.json()
+      const data: LocalizeResponse = await res.json()
       setLocalizePose(
         data.success
           ? `x=${data.tx?.toFixed(2)}  y=${data.ty?.toFixed(2)}  z=${data.tz?.toFixed(2)}`
           : `Failed: ${data.error ?? "unknown"}`
       )
-    } catch (err: any) {
-      setLocalizePose(`Error: ${err.message}`)
+    } catch (error: unknown) {
+      setLocalizePose(`Error: ${getErrorMessage(error)}`)
     } finally {
       setLocalizing(false)
     }
@@ -349,5 +371,25 @@ export default function NavigatePage() {
 
       </main>
     </div>
+  )
+}
+
+export default function NavigatePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-background">
+          <Navbar />
+          <main className="mx-auto max-w-xl px-6 pt-28 pb-20">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading navigation…
+            </div>
+          </main>
+        </div>
+      }
+    >
+      <NavigatePageContent />
+    </Suspense>
   )
 }
