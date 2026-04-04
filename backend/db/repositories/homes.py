@@ -61,6 +61,9 @@ async def update_status(
     payload: dict[str, Any] = {"status": status, "updated_at": "now()"}
     if error is not None:
         payload["error"] = error
+    elif status == "ready":
+        # Clear a previous failure message when setup completes successfully.
+        payload["error"] = None
     if num_objects is not None:
         payload["num_objects"] = num_objects
     client.table("home_maps").update(payload).eq("id", home_id).execute()
