@@ -2,10 +2,18 @@ import os
 from pathlib import Path
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Resolve .env next to the backend package (backend/.env), not the process cwd — so
+# `uvicorn main:app` from repo root still loads the same secrets as from backend/.
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=str(_BACKEND_ROOT / ".env"),
+        env_file_encoding="utf-8",
+    )
     # ── Vision: RCAC custom VLM ──────────────────────────────────────────────
     rcac_endpoint_url: str = ""
     rcac_api_key: str = ""
@@ -114,10 +122,6 @@ class Settings(BaseSettings):
     @property
     def modal_credentials_available(self) -> bool:
         return bool(self.modal_token_id and self.modal_token_secret)
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
 
 
 settings = Settings()
