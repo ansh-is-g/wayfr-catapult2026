@@ -3,13 +3,14 @@
 import { Marquee } from "@/components/ui/marquee"
 
 const items = [
-  "4 AI models in parallel",
+  "3D annotation foundation",
+  "Persona overlays on top",
   "< 860ms latency",
-  "World ID verified",
+  "Verified contributors",
   "Purdue RCAC trained",
-  "PostGIS hazard map",
+  "Shared scene index",
   "ElevenLabs TTS",
-  "Real-time caregiver dashboard",
+  "Home history dashboard",
   "On-chain attestations",
   "WCAG 2.1 AA",
   "Zero stored frames",

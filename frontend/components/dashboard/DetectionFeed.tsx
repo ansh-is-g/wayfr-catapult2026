@@ -1,7 +1,5 @@
 "use client"
 
-import { AnimatedList } from "@/components/ui/animated-list"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 

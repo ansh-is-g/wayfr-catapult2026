@@ -9,11 +9,10 @@ export default function SignUpPage() {
         <div className="hidden lg:block">
           <p className="text-xs uppercase tracking-[0.3em] text-[rgba(245,166,35,0.8)]">Create account</p>
           <h1 className="mt-4 text-5xl font-semibold tracking-[-0.05em] text-foreground">
-            Start a better wayfinding workflow.
+            Start a better 3D annotation workflow.
           </h1>
           <p className="mt-5 max-w-md text-base leading-7 text-muted-foreground">
-            Create your account to manage hazard reports, live captures, and shared caregiver
-            visibility in one place.
+            Create your account to manage shared scenes, live captures, and persona-specific overlays in one place.
           </p>
         </div>
         <div className="relative">

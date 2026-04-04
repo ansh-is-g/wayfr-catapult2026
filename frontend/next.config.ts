@@ -3,7 +3,10 @@ import path from "path";
 
 const nextConfig: NextConfig = {
   turbopack: {
-    root: path.join(__dirname),
+    root: path.resolve(process.cwd()),
+  },
+  experimental: {
+    optimizePackageImports: ["three", "@react-three/fiber", "@react-three/drei"],
   },
 };
 

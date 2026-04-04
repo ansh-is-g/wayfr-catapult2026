@@ -2,8 +2,9 @@
 
 import { useState, useCallback, useMemo, useRef, useEffect, Suspense } from "react"
 import { Canvas, useFrame, useThree } from "@react-three/fiber"
-import { OrbitControls, Html, GizmoHelper, GizmoViewport } from "@react-three/drei"
+import { OrbitControls, Html } from "@react-three/drei"
 import * as THREE from "three"
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib"
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -19,14 +20,6 @@ type Object3D = {
 // ── Constants ───────────────────────────────────────────────────────────────
 
 const BG = "#0a0a0f"
-const MANGO = "#F5A623"
-
-const URGENCY_HEX: Record<string, number> = {
-  high: 0xef4444,
-  medium: 0xf5a623,
-  low: 0x22c55e,
-}
-
 // Palette for unique per-object colors (matches OpenReality BOX_COLORS)
 const BOX_COLORS = [
   0x4da6ff, 0xff6b6b, 0x51cf66, 0xfcc419, 0xcc5de8,
@@ -229,8 +222,6 @@ function DetectionBox({
   const color = BOX_COLORS[index % BOX_COLORS.length]
   const sz = useMemo(() => getObjectSize(obj.label), [obj.label])
   const distance = Math.sqrt(obj.x ** 2 + obj.z ** 2)
-  const urgencyColor = URGENCY_HEX[obj.urgency]
-
   // Pulse for selected
   useFrame(({ clock }) => {
     if (boxRef.current && isSelected) {
@@ -386,7 +377,7 @@ function AutoCamera({
   autoOrbit: boolean
   objects: Object3D[]
 }) {
-  const controlsRef = useRef<any>(null)
+  const controlsRef = useRef<OrbitControlsImpl | null>(null)
   const idleTimer = useRef(0)
   const interacting = useRef(false)
   const { camera } = useThree()

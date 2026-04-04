@@ -27,6 +27,7 @@ export default function CapturePage() {
   const chunksRef = useRef<Blob[]>([])
   const streamRef = useRef<MediaStream | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const previewUrlRef = useRef<string | null>(null)
 
   const [sessionId, setSessionId] = useState("")
   const [dashUrl, setDashUrl] = useState("")
@@ -47,6 +48,25 @@ export default function CapturePage() {
     const id = getSessionId()
     setSessionId(id)
     setDashUrl(makeDashboardUrl(id))
+
+    return () => {
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current)
+      }
+    }
+  }, [])
+
+  const setPreviewUrl = useCallback((file: Blob) => {
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current)
+    }
+
+    const nextUrl = URL.createObjectURL(file)
+    previewUrlRef.current = nextUrl
+
+    if (previewRef.current) {
+      previewRef.current.src = nextUrl
+    }
   }, [])
 
   // ── Camera recording ───────────────────────────────────────────────────────
@@ -72,10 +92,7 @@ export default function CapturePage() {
         const blob = new Blob(chunksRef.current, { type: "video/webm" })
         setRecordedBlob(blob)
         setMode("recorded")
-        // Show preview
-        if (previewRef.current) {
-          previewRef.current.src = URL.createObjectURL(blob)
-        }
+        setPreviewUrl(blob)
       }
       recorderRef.current = recorder
       recorder.start(1000) // collect data every 1s
@@ -83,7 +100,7 @@ export default function CapturePage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Camera access denied")
     }
-  }, [])
+  }, [setPreviewUrl])
 
   const stopRecording = useCallback(() => {
     recorderRef.current?.stop()
@@ -100,11 +117,8 @@ export default function CapturePage() {
     setUploadFile(file)
     setRecordedBlob(null)
     setMode("recorded")
-    // Show preview
-    if (previewRef.current) {
-      previewRef.current.src = URL.createObjectURL(file)
-    }
-  }, [])
+    setPreviewUrl(file)
+  }, [setPreviewUrl])
 
   // ── Scan ───────────────────────────────────────────────────────────────────
 
@@ -155,6 +169,16 @@ export default function CapturePage() {
     setSelectedObj(null)
     setError(null)
     setProgress("")
+    if (previewRef.current) {
+      previewRef.current.removeAttribute("src")
+    }
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current)
+      previewUrlRef.current = null
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
   }, [])
 
   const copyLink = useCallback(() => {
@@ -168,6 +192,10 @@ export default function CapturePage() {
     () => () => {
       streamRef.current?.getTracks().forEach((t) => t.stop())
       recorderRef.current?.stop()
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current)
+        previewUrlRef.current = null
+      }
     },
     [],
   )

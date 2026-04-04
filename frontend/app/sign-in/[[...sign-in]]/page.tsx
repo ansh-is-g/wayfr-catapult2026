@@ -9,11 +9,10 @@ export default function SignInPage() {
         <div className="hidden lg:block">
           <p className="text-xs uppercase tracking-[0.3em] text-[rgba(245,166,35,0.8)]">Wayfr access</p>
           <h1 className="mt-4 text-5xl font-semibold tracking-[-0.05em] text-foreground">
-            Return to your live navigation workspace.
+            Return to your shared scene workspace.
           </h1>
           <p className="mt-5 max-w-md text-base leading-7 text-muted-foreground">
-            Review active sessions, verify hazards, and keep the caregiver dashboard in sync
-            from a single calm control surface.
+            Review active scenes, manage annotations, and keep persona overlays in sync from a single calm control surface.
           </p>
         </div>
         <div className="relative">

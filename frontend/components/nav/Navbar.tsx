@@ -6,7 +6,6 @@ import { useTheme } from "next-themes"
 import { useAuth, UserButton, SignInButton } from "@clerk/nextjs"
 import { Moon, Sun, Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { ScrollProgress } from "@/components/ui/scroll-progress"
 import {
   Sheet,
   SheetContent,
@@ -15,9 +14,9 @@ import {
 } from "@/components/ui/sheet"
 
 const navLinks = [
-  { href: "/#how-it-works", label: "How it works" },
+  { href: "/setup", label: "Setup" },
   { href: "/dashboard", label: "Dashboard" },
-  { href: "/capture", label: "Capture" },
+  { href: "/verify", label: "Report" },
 ]
 
 export function Navbar() {
@@ -27,9 +26,8 @@ export function Navbar() {
 
   return (
     <>
-      <ScrollProgress className="fixed top-0 z-[60] h-[2px]" />
       <header className="fixed top-0 left-0 right-0 z-50 border-b border-border/40 bg-background/60 backdrop-blur-xl">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
+        <div className="relative mx-auto grid h-14 max-w-6xl grid-cols-[auto_1fr_auto] items-center px-6">
           {/* Logo */}
           <Link
             href="/"
@@ -41,7 +39,7 @@ export function Navbar() {
           </Link>
 
           {/* Desktop nav */}
-          <nav className="hidden items-center gap-8 text-sm md:flex">
+          <nav className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-8 text-sm md:flex">
             {navLinks.map((link) => (
               <Link
                 key={link.href}
@@ -54,7 +52,7 @@ export function Navbar() {
           </nav>
 
           {/* Actions */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-self-end gap-2">
             <Button
               variant="ghost"
               size="icon"
@@ -124,8 +122,8 @@ export function Navbar() {
                   ))}
                   {isSignedIn ? (
                     <Link href="/verify" onClick={() => setOpen(false)}>
-                      <Button className="mt-4 w-full bg-mango text-background hover:bg-mango/90 rounded-full">
-                        Report an obstacle
+                      <Button className="mt-4 w-full rounded-full bg-mango text-background hover:bg-mango/90">
+                        Open report
                       </Button>
                     </Link>
                   ) : (

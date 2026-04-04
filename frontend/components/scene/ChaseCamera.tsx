@@ -4,6 +4,7 @@ import { useRef, useMemo, useEffect } from "react"
 import { useFrame, useThree } from "@react-three/fiber"
 import { OrbitControls } from "@react-three/drei"
 import * as THREE from "three"
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib"
 
 interface PathPoint {
   x: number
@@ -27,7 +28,7 @@ export function ChaseCamera({
   chaseBehind = 3,
   chaseHeight = 2.5,
 }: ChaseCameraProps) {
-  const controlsRef = useRef<any>(null)
+  const controlsRef = useRef<OrbitControlsImpl | null>(null)
   const interacting = useRef(false)
   const idleTimer = useRef(0)
   const { camera } = useThree()

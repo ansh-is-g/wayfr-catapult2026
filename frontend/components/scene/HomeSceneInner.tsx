@@ -4,8 +4,9 @@ import { useState, useCallback, useMemo, useRef, useEffect, Suspense } from "rea
 import { Canvas, useFrame, useThree } from "@react-three/fiber"
 import { OrbitControls, Html } from "@react-three/drei"
 import * as THREE from "three"
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib"
 
-import { GlbPointCloud } from "./GlbPointCloud"
+import { GlbSceneModel } from "./GlbSceneModel"
 import { NavigationPath } from "./NavigationPath"
 import { ChaseCamera } from "./ChaseCamera"
 import type { ObjectItem } from "./HomeSceneViewer"
@@ -13,8 +14,6 @@ import type { ObjectItem } from "./HomeSceneViewer"
 // ── Constants ───────────────────────────────────────────────────────────────
 
 const BG = "#0a0a0f"
-const MANGO = "#F5A623"
-
 const BOX_COLORS = [
   0x4da6ff, 0xff6b6b, 0x51cf66, 0xfcc419, 0xcc5de8,
   0xff922b, 0x20c997, 0xf06595, 0x5c7cfa, 0x94d82d,
@@ -37,6 +36,18 @@ function getObjectSize(label: string): [number, number, number] {
   return sizes[label.toLowerCase()] ?? [0.5, 0.6, 0.5]
 }
 
+function getObjectBounds(obj: ObjectItem): [number, number, number] {
+  if (obj.bbox_min?.length === 3 && obj.bbox_max?.length === 3) {
+    return [
+      Math.max(0.08, Math.abs(obj.bbox_max[0] - obj.bbox_min[0])),
+      Math.max(0.08, Math.abs(obj.bbox_max[1] - obj.bbox_min[1])),
+      Math.max(0.08, Math.abs(obj.bbox_max[2] - obj.bbox_min[2])),
+    ]
+  }
+
+  return getObjectSize(obj.label)
+}
+
 // ── Object label + bounding box ─────────────────────────────────────────────
 
 function ObjectBox({
@@ -56,7 +67,7 @@ function ObjectBox({
 }) {
   const boxRef = useRef<THREE.Group>(null)
   const color = BOX_COLORS[index % BOX_COLORS.length]
-  const sz = useMemo(() => getObjectSize(obj.label), [obj.label])
+  const sz = useMemo(() => getObjectBounds(obj), [obj])
   const distance = Math.sqrt(obj.x ** 2 + obj.z ** 2)
   const activeColor = isTarget ? 0x22c55e : color
 
@@ -122,18 +133,24 @@ function ObjectBox({
               display: "flex",
               alignItems: "center",
               gap: "5px",
-              padding: "2px 8px",
-              borderRadius: "4px",
-              border: `1px solid #${activeColor.toString(16).padStart(6, "0")}${isSelected || isTarget ? "bb" : "55"}`,
+              padding: "5px 10px",
+              borderRadius: "999px",
+              border: isSelected || isTarget
+                ? `1px solid #${activeColor.toString(16).padStart(6, "0")}66`
+                : "1px solid rgba(255,255,255,0.14)",
               background: isSelected || isTarget
-                ? `#${activeColor.toString(16).padStart(6, "0")}30`
-                : "rgba(10,10,15,0.85)",
+                ? `linear-gradient(180deg, rgba(10,10,15,0.82), #${activeColor.toString(16).padStart(6, "0")}22)`
+                : "rgba(10,10,15,0.52)",
+              backdropFilter: "blur(18px)",
+              boxShadow: isSelected || isTarget
+                ? "0 18px 42px rgba(0,0,0,0.28)"
+                : "0 10px 28px rgba(0,0,0,0.18)",
               cursor: "pointer",
               whiteSpace: "nowrap",
               fontFamily: "monospace",
               fontSize: isSelected || isTarget ? "12px" : "10px",
               lineHeight: "1.4",
-              color: `#${activeColor.toString(16).padStart(6, "0")}`,
+              color: isSelected || isTarget ? "#f8efe2" : "rgba(248,239,226,0.92)",
               transition: "all 0.15s",
             }}
           >
@@ -154,23 +171,6 @@ function ObjectBox({
 
 // ── Camera frustum at origin ────────────────────────────────────────────────
 
-function CameraFrustum() {
-  return (
-    <group position={[0, 0.15, 0]}>
-      <mesh rotation={[Math.PI / 2, 0, 0]}>
-        <coneGeometry args={[0.06, 0.18, 4]} />
-        <meshBasicMaterial color={0xffffff} wireframe transparent opacity={0.5} />
-      </mesh>
-      <mesh>
-        <sphereGeometry args={[0.03, 8, 8]} />
-        <meshBasicMaterial color={0xffffff} transparent opacity={0.7} />
-      </mesh>
-    </group>
-  )
-}
-
-// ── Grid ────────────────────────────────────────────────────────────────────
-
 function SceneGrid({ objects }: { objects: ObjectItem[] }) {
   const size = useMemo(() => {
     if (objects.length === 0) return 10
@@ -180,17 +180,18 @@ function SceneGrid({ objects }: { objects: ObjectItem[] }) {
   }, [objects])
 
   return (
-    <gridHelper
-      args={[size, size, 0x333333, 0x1a1a1a]}
-      position={[0, 0.001, size / 4]}
-    />
-  )
+      <gridHelper
+        args={[size, size, 0x333333, 0x1a1a1a]}
+        position={[0, 0.001, size / 4]}
+        visible={objects.length > 0}
+      />
+    )
 }
 
 // ── Orbit camera (no navigation) ────────────────────────────────────────────
 
 function ExploreCamera({ objects }: { objects: ObjectItem[] }) {
-  const controlsRef = useRef<any>(null)
+  const controlsRef = useRef<OrbitControlsImpl | null>(null)
   const idleTimer = useRef(0)
   const interacting = useRef(false)
   const { camera } = useThree()
@@ -236,8 +237,12 @@ function ExploreCamera({ objects }: { objects: ObjectItem[] }) {
       maxDistance={dist * 3}
       autoRotate
       autoRotateSpeed={0.8}
-      onStart={() => { interacting.current = true }}
-      onEnd={() => { interacting.current = false }}
+      onStart={() => {
+        interacting.current = true
+      }}
+      onEnd={() => {
+        interacting.current = false
+      }}
     />
   )
 }
@@ -279,17 +284,16 @@ function SceneContent({
         <ExploreCamera objects={objects} />
       )}
 
-      <ambientLight intensity={0.5} color={0xffffff} />
-      <directionalLight position={[5, 10, 5]} intensity={0.3} color={0xffffff} />
+      <ambientLight intensity={0.35} color={0xffffff} />
+      <hemisphereLight intensity={0.65} color={0xf6efe6} groundColor={0x4c4338} />
+      <directionalLight position={[6, 8, 4]} intensity={0.65} color={0xffffff} />
       <fog attach="fog" args={[BG, 12, 30]} />
 
       <SceneGrid objects={objects} />
-      <axesHelper args={[1]} />
-      <CameraFrustum />
 
-      {/* Real GLB point cloud */}
+      {/* Real GLB scene */}
       <Suspense fallback={null}>
-        <GlbPointCloud url={glbUrl} onLoad={onPointCount} onError={onGlbError} />
+        <GlbSceneModel url={glbUrl} onLoad={onPointCount} onError={onGlbError} />
       </Suspense>
 
       {/* Object bounding boxes with labels */}

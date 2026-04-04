@@ -45,21 +45,20 @@ export function AnimatedGridPattern({
 }: AnimatedGridPatternProps) {
   const id = useId()
   const containerRef = useRef<SVGSVGElement | null>(null)
-  const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
   const [squares, setSquares] = useState<Array<Square>>([])
 
-  const getPos = useCallback((): [number, number] => {
+  const getPos = useCallback((containerWidth: number, containerHeight: number): [number, number] => {
     return [
-      Math.floor((Math.random() * dimensions.width) / width),
-      Math.floor((Math.random() * dimensions.height) / height),
+      Math.floor((Math.random() * containerWidth) / width),
+      Math.floor((Math.random() * containerHeight) / height),
     ]
-  }, [dimensions.height, dimensions.width, height, width])
+  }, [height, width])
 
   const generateSquares = useCallback(
-    (count: number) => {
+    (containerWidth: number, containerHeight: number, count: number) => {
       return Array.from({ length: count }, (_, i) => ({
         id: i,
-        pos: getPos(),
+        pos: getPos(containerWidth, containerHeight),
         iteration: 0,
       }))
     },
@@ -72,10 +71,14 @@ export function AnimatedGridPattern({
         const current = currentSquares[squareId]
         if (!current || current.id !== squareId) return currentSquares
 
+        const element = containerRef.current
+        if (!element) return currentSquares
+        const { width: containerWidth, height: containerHeight } = element.getBoundingClientRect()
+
         const nextSquares = currentSquares.slice()
         nextSquares[squareId] = {
           ...current,
-          pos: getPos(),
+          pos: getPos(containerWidth, containerHeight),
           iteration: current.iteration + 1,
         }
 
@@ -86,29 +89,15 @@ export function AnimatedGridPattern({
   )
 
   useEffect(() => {
-    if (dimensions.width && dimensions.height) {
-      setSquares(generateSquares(numSquares))
-    }
-  }, [dimensions.width, dimensions.height, generateSquares, numSquares])
-
-  useEffect(() => {
     const element = containerRef.current
     let resizeObserver: ResizeObserver | null = null
 
     if (element) {
       resizeObserver = new ResizeObserver((entries) => {
         for (const entry of entries) {
-          setDimensions((currentDimensions) => {
-            const nextWidth = entry.contentRect.width
-            const nextHeight = entry.contentRect.height
-            if (
-              currentDimensions.width === nextWidth &&
-              currentDimensions.height === nextHeight
-            ) {
-              return currentDimensions
-            }
-            return { width: nextWidth, height: nextHeight }
-          })
+          const nextWidth = entry.contentRect.width
+          const nextHeight = entry.contentRect.height
+          setSquares(generateSquares(nextWidth, nextHeight, numSquares))
         }
       })
 
@@ -120,7 +109,7 @@ export function AnimatedGridPattern({
         resizeObserver.disconnect()
       }
     }
-  }, [])
+  }, [generateSquares, numSquares])
 
   return (
     <svg

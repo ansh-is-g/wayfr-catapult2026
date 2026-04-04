@@ -33,7 +33,7 @@ export function SessionCard({
 
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs text-muted-foreground">Active session</p>
+          <p className="text-xs text-muted-foreground">Active scene</p>
           <h2 className="mt-1 text-xl font-bold">{name}</h2>
         </div>
         {isActive ? (
@@ -62,7 +62,7 @@ export function SessionCard({
         <div className="rounded-lg border border-border bg-background/50 p-3">
           <MapPin className="h-4 w-4 text-mango" />
           <p className="mt-1 text-lg font-semibold">{nearbyHazards}</p>
-          <p className="text-xs text-muted-foreground">hazards</p>
+          <p className="text-xs text-muted-foreground">annotations</p>
         </div>
       </div>
 

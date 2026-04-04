@@ -85,7 +85,7 @@ export function AnnotatedFrame({ annotations = [], viewLabel = "current" }: Anno
         [rx + rw, ry, -corner, 0, 0, corner],
         [rx, ry + rh, corner, 0, 0, -corner],
         [rx + rw, ry + rh, -corner, 0, 0, -corner],
-      ].forEach(([x, y, dx1, dy1, dx2, dy2]) => {
+      ].forEach(([x, y, dx1, , , dy2]) => {
         ctx.beginPath()
         ctx.moveTo(x + dx1, y)
         ctx.lineTo(x, y)

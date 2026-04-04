@@ -75,38 +75,51 @@ export function DotPattern({
 }: DotPatternProps) {
   const id = useId()
   const containerRef = useRef<SVGSVGElement>(null)
-  const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
+  const [dots, setDots] = useState<
+    Array<{ x: number; y: number; delay: number; duration: number }>
+  >([])
 
   useEffect(() => {
-    const updateDimensions = () => {
-      if (containerRef.current) {
-        const { width, height } = containerRef.current.getBoundingClientRect()
-        setDimensions({ width, height })
-      }
+    const element = containerRef.current
+    if (!element) return
+
+    const updateDots = (nextWidth: number, nextHeight: number) => {
+      const columns = Math.max(1, Math.ceil(nextWidth / width))
+      const rows = Math.max(1, Math.ceil(nextHeight / height))
+      const total = columns * rows
+
+      setDots(
+        Array.from({ length: total }, (_, i) => {
+          const col = i % columns
+          const row = Math.floor(i / columns)
+          const seed = (col + 1) * 12.9898 + (row + 1) * 78.233 + nextWidth * 0.1 + nextHeight * 0.2
+          const delaySeed = Math.sin(seed) * 10000
+          const durationSeed = Math.sin(seed + 19.19) * 10000
+          const delay = (delaySeed - Math.floor(delaySeed)) * 5
+          const duration = (durationSeed - Math.floor(durationSeed)) * 3 + 2
+
+          return {
+            x: col * width + cx + x,
+            y: row * height + cy + y,
+            delay,
+            duration,
+          }
+        })
+      )
     }
 
-    updateDimensions()
-    window.addEventListener("resize", updateDimensions)
-    return () => window.removeEventListener("resize", updateDimensions)
-  }, [])
-
-  const dots = Array.from(
-    {
-      length:
-        Math.ceil(dimensions.width / width) *
-        Math.ceil(dimensions.height / height),
-    },
-    (_, i) => {
-      const col = i % Math.ceil(dimensions.width / width)
-      const row = Math.floor(i / Math.ceil(dimensions.width / width))
-      return {
-        x: col * width + cx + x,
-        y: row * height + cy + y,
-        delay: Math.random() * 5,
-        duration: Math.random() * 3 + 2,
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        updateDots(entry.contentRect.width, entry.contentRect.height)
       }
+    })
+
+    resizeObserver.observe(element)
+
+    return () => {
+      resizeObserver.disconnect()
     }
-  )
+  }, [cx, cy, height, width, x, y])
 
   return (
     <svg

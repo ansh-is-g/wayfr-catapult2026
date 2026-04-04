@@ -46,8 +46,8 @@ export default function VerifyPage() {
 
                 <h1 className="mt-5 text-2xl font-bold">Verify you&apos;re human</h1>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  wayfr uses World ID to ensure every hazard report comes from a real,
-                  unique person. Blind users depend on this data for their safety.
+                  wayfr uses World ID to make sure persona-specific annotations and scene updates come from a real,
+                  unique person. Shared scene data depends on that signal.
                 </p>
 
                 <div className="mt-6 rounded-xl border border-border/40 bg-background/30 backdrop-blur p-4 text-sm text-muted-foreground">
@@ -55,7 +55,7 @@ export default function VerifyPage() {
                   <ul className="mt-2 space-y-1">
                     <li>✓ Proves you&apos;re a unique human via iris scan</li>
                     <li>✓ Zero personal data stored — ZK proof only</li>
-                    <li>✓ Allows up to 5 hazard reports per day</li>
+                    <li>✓ Allows up to 5 scene updates per day</li>
                   </ul>
                 </div>
 
@@ -84,7 +84,7 @@ export default function VerifyPage() {
                 <p className="mt-4 text-center text-xs text-muted-foreground">
                   Already verified?{" "}
                   <Link href="/report" className="text-mango hover:underline">
-                    Skip to report →
+                    Skip to annotations →
                   </Link>
                 </p>
               </div>
@@ -97,14 +97,14 @@ export default function VerifyPage() {
                 </div>
                 <h1 className="mt-4 text-2xl font-bold text-green-400">Verified Human</h1>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  World ID confirmed. You have 5 hazard reports available today.
+                  World ID confirmed. You have 5 scene updates available today.
                 </p>
                 <div className="mt-6 rounded-lg border border-border bg-background/30 px-4 py-2 font-mono text-xs text-muted-foreground">
                   nullifier: 0x7f3c...a8d2
                 </div>
                 <Link href="/report" className="mt-6 block">
                   <Button className="w-full bg-mango-500 text-background hover:bg-mango-700">
-                    Submit a hazard report
+                    Continue to annotations
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 </Link>

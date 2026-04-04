@@ -8,8 +8,17 @@ import { cn } from "@/lib/utils"
 
 const MOVEMENT_DAMPING = 1400
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const GLOBE_CONFIG: any = {
+type GlobeRenderState = {
+  phi?: number
+  width?: number
+  height?: number
+}
+
+type GlobeConfig = COBEOptions & {
+  onRender: (state: GlobeRenderState) => void
+}
+
+const GLOBE_CONFIG: GlobeConfig = {
   width: 800,
   height: 800,
   onRender: () => {},
@@ -42,13 +51,12 @@ export function Globe({
   config = GLOBE_CONFIG,
 }: {
   className?: string
-  config?: COBEOptions
+  config?: Partial<COBEOptions>
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const phiRef = useRef(0)
   const widthRef = useRef(0)
   const pointerInteracting = useRef<number | null>(null)
-  const pointerInteractionMovement = useRef(0)
 
   const r = useMotionValue(0)
   const rs = useSpring(r, {
@@ -67,36 +75,39 @@ export function Globe({
   const updateMovement = (clientX: number) => {
     if (pointerInteracting.current !== null) {
       const delta = clientX - pointerInteracting.current
-      pointerInteractionMovement.current = delta
       r.set(r.get() + delta / MOVEMENT_DAMPING)
     }
   }
 
   useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
     const onResize = () => {
-      if (canvasRef.current) {
-        widthRef.current = canvasRef.current.offsetWidth
-      }
+      widthRef.current = canvas.offsetWidth
     }
 
     window.addEventListener("resize", onResize)
     onResize()
 
-    const globe = createGlobe(canvasRef.current!, {
-      ...config,
+    const globe = createGlobe(canvas, {
+      ...(config as COBEOptions),
       width: widthRef.current * 2,
       height: widthRef.current * 2,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      onRender: (state: any) => {
+      onRender: (state: GlobeRenderState) => {
         if (!pointerInteracting.current) phiRef.current += 0.005
         state.phi = phiRef.current + rs.get()
         state.width = widthRef.current * 2
         state.height = widthRef.current * 2
       },
-    } as any)
+    } as COBEOptions)
 
-    setTimeout(() => (canvasRef.current!.style.opacity = "1"), 0)
+    const raf = requestAnimationFrame(() => {
+      canvas.style.opacity = "1"
+    })
+
     return () => {
+      cancelAnimationFrame(raf)
       globe.destroy()
       window.removeEventListener("resize", onResize)
     }

@@ -45,11 +45,11 @@ export default function ReportPage() {
             <Badge variant="outline" className="border-green-500/30 bg-green-500/10 text-green-400 text-xs">
               ✓ Verified Human
             </Badge>
-            <span className="text-xs text-muted-foreground">3 reports remaining today</span>
+            <span className="text-xs text-muted-foreground">3 annotations remaining today</span>
           </div>
-          <h1 className="text-2xl font-bold">Report an obstacle</h1>
+          <h1 className="text-2xl font-bold">Add a scene annotation</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            3+ verified reports at the same location auto-verify the obstacle for all users.
+            Repeated annotations at the same location strengthen the shared scene for everyone.
           </p>
         </BlurFade>
 
@@ -60,7 +60,7 @@ export default function ReportPage() {
               <div className="rounded-2xl border border-mango/10 bg-card/60 backdrop-blur-xl p-4">
                 <div className="flex items-center gap-2 text-sm font-medium">
                   <MapPin className="h-4 w-4 text-mango" />
-                  GPS location
+                  Scene location
                 </div>
                 <p className="mt-1 font-mono text-xs text-muted-foreground">
                   40.4237° N, 86.9212° W — West Lafayette, IN
@@ -72,19 +72,18 @@ export default function ReportPage() {
 
               {/* Type */}
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Obstacle type</label>
+                <label className="text-sm font-medium">Annotation type</label>
                 <Select required>
                   <SelectTrigger className="border-mango/20 bg-card">
-                    <SelectValue placeholder="Select obstacle type" />
+                    <SelectValue placeholder="Select annotation type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="construction">Construction zone</SelectItem>
-                    <SelectItem value="wet_floor">Wet floor</SelectItem>
-                    <SelectItem value="broken_sidewalk">Broken sidewalk</SelectItem>
-                    <SelectItem value="missing_curb_cut">Missing curb cut</SelectItem>
-                    <SelectItem value="obstacle">Obstacle</SelectItem>
-                    <SelectItem value="step">Step / level change</SelectItem>
-                    <SelectItem value="vehicle_blocking">Vehicle blocking path</SelectItem>
+                    <SelectItem value="object">Object</SelectItem>
+                    <SelectItem value="surface">Surface</SelectItem>
+                    <SelectItem value="landmark">Landmark</SelectItem>
+                    <SelectItem value="persona_note">Persona note</SelectItem>
+                    <SelectItem value="scene_context">Scene context</SelectItem>
+                    <SelectItem value="path">Path cue</SelectItem>
                     <SelectItem value="other">Other</SelectItem>
                   </SelectContent>
                 </Select>
@@ -92,7 +91,7 @@ export default function ReportPage() {
 
               {/* Severity */}
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Severity</label>
+                <label className="text-sm font-medium">Priority</label>
                 <div className="grid grid-cols-4 gap-2">
                   {severityOptions.map((opt) => (
                     <button
@@ -116,7 +115,7 @@ export default function ReportPage() {
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Notes (optional)</label>
                 <Textarea
-                  placeholder="Describe the obstacle — e.g. 'Large crack spanning full sidewalk width'"
+                  placeholder="Describe the scene detail — e.g. 'White table next to the window'"
                   className="border-mango/20 bg-card resize-none"
                   rows={3}
                 />
@@ -150,8 +149,8 @@ export default function ReportPage() {
               </ShimmerButton>
 
               <p className="text-center text-xs text-muted-foreground">
-                Your report will be attested on World Chain — an immutable record that
-                a verified human flagged this obstacle.
+                Your annotation will be attested on World Chain — an immutable record that
+                a verified human updated this scene.
               </p>
             </form>
           </BlurFade>
@@ -159,15 +158,15 @@ export default function ReportPage() {
           <BlurFade delay={0.1}>
             <div className="mt-8 rounded-2xl border border-green-500/20 bg-green-500/5 backdrop-blur-xl p-8 text-center">
               <CheckCircle2 className="mx-auto h-10 w-10 text-green-400" />
-              <h2 className="mt-4 text-xl font-bold text-green-400">Obstacle reported</h2>
+              <h2 className="mt-4 text-xl font-bold text-green-400">Annotation saved</h2>
               <p className="mt-2 text-sm text-muted-foreground">
-                Confirmed by 2 others at this location. 1 more needed to auto-verify.
+                Confirmed by 2 others at this location. 1 more needed to strengthen the scene.
               </p>
               <div className="mt-4 rounded-lg border border-border bg-background/30 px-4 py-2 font-mono text-xs text-muted-foreground">
                 on-chain: 0x7f3c...a8d2 · World Chain
               </div>
               <p className="mt-4 text-xs text-muted-foreground">
-                Active wayfr users within 100m have been alerted about this obstacle.
+                Active wayfr users within 100m can now see this scene update.
               </p>
             </div>
           </BlurFade>

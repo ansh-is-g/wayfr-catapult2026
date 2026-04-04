@@ -1,6 +1,5 @@
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertTriangle, MapPin } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -27,7 +26,7 @@ export function NearbyHazards({ items = [] }: { items?: Hazard[] }) {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
            <MapPin className="h-4 w-4 text-mango" />
-           <h3 className="text-sm font-semibold tracking-tight">Nearby Community Hazards</h3>
+           <h3 className="text-sm font-semibold tracking-tight">Nearby scene annotations</h3>
         </div>
         <Badge variant="outline" className="border-mango/20 bg-mango/5 text-mango text-[10px] font-bold">
           {items.length} ACTIVE
@@ -39,7 +38,7 @@ export function NearbyHazards({ items = [] }: { items?: Hazard[] }) {
           <div className="mb-4 rounded-lg border border-orange-500/20 bg-orange-500/5 p-3 flex items-center gap-3">
             <AlertTriangle className="h-5 w-5 text-orange-500 shrink-0" />
             <p className="text-[11px] font-medium text-orange-400 leading-tight">
-              {items.length} verified hazards detected within 500m of user location.
+              {items.length} verified scene annotations within 500m of user location.
             </p>
           </div>
 
@@ -70,7 +69,7 @@ export function NearbyHazards({ items = [] }: { items?: Hazard[] }) {
            <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center mb-3">
               <MapPin className="h-5 w-5 text-muted-foreground/40" />
            </div>
-           <p className="text-xs font-medium text-muted-foreground">No hazards reported in this area</p>
+           <p className="text-xs font-medium text-muted-foreground">No annotations in this area</p>
            <p className="text-[10px] text-muted-foreground/60 mt-1 uppercase tracking-tighter font-mono">Radius: 500m</p>
         </div>
       )}

@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Navbar } from "@/components/nav/Navbar"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { Camera, Upload, CheckCircle2, AlertCircle, Loader2, MapPin } from "lucide-react"
@@ -38,6 +38,7 @@ export default function SetupPage() {
   const streamRef = useRef<MediaStream | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const previewUrlRef = useRef<string | null>(null)
 
   const [mode, setMode] = useState<"idle" | "recording" | "recorded" | "uploading" | "polling" | "done" | "error">("idle")
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null)
@@ -52,6 +53,20 @@ export default function SetupPage() {
     return () => {
       streamRef.current?.getTracks().forEach((t) => t.stop())
       if (pollRef.current) clearInterval(pollRef.current)
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
+    }
+  }, [])
+
+  const setPreviewUrl = useCallback((file: Blob) => {
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current)
+    }
+
+    const nextUrl = URL.createObjectURL(file)
+    previewUrlRef.current = nextUrl
+
+    if (previewRef.current) {
+      previewRef.current.src = nextUrl
     }
   }, [])
 
@@ -73,17 +88,17 @@ export default function SetupPage() {
       recorder.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: "video/webm" })
         setRecordedBlob(blob)
-        if (previewRef.current) previewRef.current.src = URL.createObjectURL(blob)
+        setPreviewUrl(blob)
         stream.getTracks().forEach((t) => t.stop())
         setMode("recorded")
       }
       recorderRef.current = recorder
       recorder.start()
       setMode("recording")
-    } catch (err: any) {
-      setError(`Camera error: ${err.message}`)
+    } catch (err: unknown) {
+      setError(`Camera error: ${err instanceof Error ? err.message : "Unable to start recording"}`)
     }
-  }, [])
+  }, [setPreviewUrl])
 
   const stopRecording = useCallback(() => {
     recorderRef.current?.stop()
@@ -94,9 +109,45 @@ export default function SetupPage() {
     if (!file) return
     setUploadFile(file)
     setRecordedBlob(null)
-    if (previewRef.current) previewRef.current.src = URL.createObjectURL(file)
+    setPreviewUrl(file)
     setMode("recorded")
   }
+
+  const fetchObjects = useCallback(async (homeId: string) => {
+    const res = await fetch(`${API_URL}/api/homes/${homeId}/objects`)
+    const data: { objects?: ObjectItem[] } = await res.json()
+    setObjects(data.objects ?? [])
+  }, [])
+
+  const startPolling = useCallback(
+    (homeId: string) => {
+    if (pollRef.current) clearInterval(pollRef.current)
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/homes/${homeId}`)
+        const data: HomeInfo = await res.json()
+        const status: HomeStatus = data.status
+        setHomeInfo((prev) => prev ? { ...prev, status, num_objects: data.num_objects, error: data.error } : prev)
+
+        if (status === "ready") {
+          if (pollRef.current) clearInterval(pollRef.current)
+          setStatusMsg("Done!")
+          await fetchObjects(homeId)
+          setMode("done")
+        } else if (status === "failed") {
+          if (pollRef.current) clearInterval(pollRef.current)
+          setError(data.error ?? "Setup failed")
+          setMode("error")
+        } else {
+          setStatusMsg("Running 3D reconstruction on GPU…")
+        }
+      } catch {
+        // ignore transient fetch errors
+      }
+    }, POLL_INTERVAL_MS)
+    },
+    [fetchObjects],
+  )
 
   const submitVideo = useCallback(async () => {
     const blob = recordedBlob ?? uploadFile
@@ -112,52 +163,19 @@ export default function SetupPage() {
     try {
       const res = await fetch(`${API_URL}/api/homes`, { method: "POST", body: form })
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
+        const body = (await res.json().catch(() => ({}))) as { detail?: string }
         throw new Error(body.detail ?? `HTTP ${res.status}`)
       }
-      const data: HomeInfo = await res.json().then((d) => ({ ...d, home_id: d.home_id }))
+      const data = (await res.json()) as HomeInfo
       setHomeInfo(data)
       setMode("polling")
       setStatusMsg("Building your 3D map…")
       startPolling(data.home_id)
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Setup upload failed")
       setMode("error")
     }
-  }, [recordedBlob, uploadFile, homeName])
-
-  const startPolling = (homeId: string) => {
-    if (pollRef.current) clearInterval(pollRef.current)
-    pollRef.current = setInterval(async () => {
-      try {
-        const res = await fetch(`${API_URL}/api/homes/${homeId}`)
-        const data = await res.json()
-        const status: HomeStatus = data.status
-        setHomeInfo((prev) => prev ? { ...prev, status, num_objects: data.num_objects, error: data.error } : prev)
-
-        if (status === "ready") {
-          clearInterval(pollRef.current!)
-          setStatusMsg("Done!")
-          await fetchObjects(homeId)
-          setMode("done")
-        } else if (status === "failed") {
-          clearInterval(pollRef.current!)
-          setError(data.error ?? "Setup failed")
-          setMode("error")
-        } else {
-          setStatusMsg("Running 3D reconstruction on GPU…")
-        }
-      } catch {
-        // ignore transient fetch errors
-      }
-    }, POLL_INTERVAL_MS)
-  }
-
-  const fetchObjects = async (homeId: string) => {
-    const res = await fetch(`${API_URL}/api/homes/${homeId}/objects`)
-    const data = await res.json()
-    setObjects(data.objects ?? [])
-  }
+  }, [recordedBlob, uploadFile, homeName, startPolling])
 
   const reset = () => {
     setMode("idle")
@@ -166,15 +184,22 @@ export default function SetupPage() {
     setError(null)
     setHomeInfo(null)
     setObjects([])
+    if (previewRef.current) {
+      previewRef.current.removeAttribute("src")
+    }
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current)
+      previewUrlRef.current = null
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
   }
 
   const isProcessing = mode === "uploading" || mode === "polling"
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-
-      <main className="mx-auto max-w-xl px-6 pt-28 pb-20">
+    <main className="mx-auto max-w-xl px-6 py-8 pb-20">
 
         {/* Header */}
         <div className="mb-10">
@@ -335,6 +360,7 @@ export default function SetupPage() {
 
             {/* 3D scene viewer */}
             <HomeSceneViewer
+              homeId={homeInfo.home_id}
               glbUrl={`${API_URL}/api/homes/${homeInfo.home_id}/scene`}
               objects={objects}
               height={400}
@@ -367,16 +393,15 @@ export default function SetupPage() {
             )}
 
             {objects.length > 0 && (
-              <a
+              <Link
                 href={`/navigate?home=${homeInfo.home_id}`}
                 className="flex w-full items-center justify-center rounded-xl bg-primary hover:bg-primary/90 px-6 py-3 text-sm font-semibold text-primary-foreground transition-colors"
               >
                 Navigate this home →
-              </a>
+              </Link>
             )}
           </div>
         )}
-      </main>
-    </div>
+    </main>
   )
 }

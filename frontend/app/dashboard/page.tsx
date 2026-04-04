@@ -1,511 +1,666 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
-import { Navbar } from "@/components/nav/Navbar"
-import { World3DViewer, type Object3D } from "@/components/scene/World3DViewer"
-import { DetectionFeed, type Detection as FeedDetection } from "@/components/dashboard/DetectionFeed"
-import { NearbyHazards } from "@/components/dashboard/NearbyHazards"
-import { SessionCard } from "@/components/dashboard/SessionCard"
+import Link from "next/link"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import {
+  ArrowRight,
+  Download,
+  ExternalLink,
+  FolderClock,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Search,
+  TriangleAlert,
+} from "lucide-react"
+
+import { HomeSceneViewer } from "@/components/scene/HomeSceneViewer"
+import { SceneAnnotationPanel } from "@/components/scene/SceneAnnotationPanel"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Download, Mic, MicOff, Info, AlertTriangle, RefreshCw } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
-import { getSessionId, makeShareUrl } from "@/lib/session"
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8000"
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
-type Detection = {
-  id: number
-  ts: string
-  label: string
-  urgency: "high" | "medium" | "low"
-  distance: string
-  direction: string
+type HomeStatus = "processing" | "ready" | "failed"
+
+type HomeSummary = {
+  home_id: string
+  name: string
+  status: HomeStatus
+  num_objects: number
+  created_at?: unknown
 }
 
-const IDLE_SCENE: Object3D[] = [{ label: "waiting\u2026", x: 0, y: 0, z: 3, urgency: "low", confidence: 1 }]
+type HomeDetail = HomeSummary & {
+  updated_at?: unknown
+  error?: string | null
+}
 
-function nowTs() {
-  return new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })
+type ObjectItem = {
+  id: string
+  label: string
+  x: number
+  y: number
+  z: number
+  confidence: number | null
+  n_observations: number
+}
+
+type HomesResponse = {
+  homes?: HomeSummary[]
+}
+
+type HomeResponse = {
+  home_id: string
+  name: string
+  status: HomeStatus
+  num_objects: number
+  error?: string | null
+  created_at?: unknown
+  updated_at?: unknown
+}
+
+type ObjectsResponse = {
+  objects?: ObjectItem[]
+}
+
+function parseTimestamp(value: unknown) {
+  if (typeof value === "number") {
+    return new Date(value < 1e12 ? value * 1000 : value)
+  }
+
+  if (typeof value === "string") {
+    const numeric = Number(value)
+    if (Number.isFinite(numeric)) {
+      return new Date(numeric < 1e12 ? numeric * 1000 : numeric)
+    }
+
+    const parsed = new Date(value)
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed
+    }
+  }
+
+  return null
+}
+
+function formatDateTime(value: unknown) {
+  const parsed = parseTimestamp(value)
+  if (!parsed) return "Unknown"
+
+  return parsed.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  })
+}
+
+function formatRelative(value: unknown) {
+  const parsed = parseTimestamp(value)
+  if (!parsed) return "Unknown"
+
+  const diffMs = parsed.getTime() - Date.now()
+  const diffMins = Math.round(diffMs / 60000)
+
+  if (Math.abs(diffMins) < 60) {
+    return `${Math.abs(diffMins)} min${Math.abs(diffMins) === 1 ? "" : "s"} ${diffMins <= 0 ? "ago" : "from now"}`
+  }
+
+  const diffHours = Math.round(diffMins / 60)
+  if (Math.abs(diffHours) < 24) {
+    return `${Math.abs(diffHours)} hr${Math.abs(diffHours) === 1 ? "" : "s"} ${diffHours <= 0 ? "ago" : "from now"}`
+  }
+
+  const diffDays = Math.round(diffHours / 24)
+  return `${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? "" : "s"} ${diffDays <= 0 ? "ago" : "from now"}`
+}
+
+function getStatusLabel(status: HomeStatus) {
+  if (status === "ready") return "Ready"
+  if (status === "processing") return "Processing"
+  return "Failed"
+}
+
+function getStatusClasses(status: HomeStatus) {
+  if (status === "ready") return "border-green-500/20 bg-green-500/10 text-green-500"
+  if (status === "processing") return "border-mango/20 bg-mango/10 text-mango"
+  return "border-red-500/20 bg-red-500/10 text-red-500"
+}
+
+function EmptyPanel() {
+  return (
+    <div className="mt-8 rounded-[28px] border border-border/60 bg-card/55 px-6 py-14 text-center backdrop-blur-xl">
+      <FolderClock className="mx-auto h-10 w-10 text-mango" />
+      <h2 className="mt-4 text-2xl font-semibold tracking-tight text-foreground">No saved scenes yet</h2>
+      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+        Start in setup, upload a walkthrough, and the completed GLB will appear here.
+      </p>
+      <Link
+        href="/setup"
+        className="mt-6 inline-flex items-center justify-center rounded-full bg-mango px-4 py-2 text-sm font-medium text-background transition-colors hover:bg-mango/90"
+      >
+        Open setup
+        <ArrowRight className="ml-2 h-4 w-4" />
+      </Link>
+    </div>
+  )
 }
 
 export default function DashboardPage() {
-  const wsRef = useRef<WebSocket | null>(null)
-  const audioQueueRef = useRef<string[]>([])
-  const playingRef = useRef(false)
+  const [homes, setHomes] = useState<HomeSummary[]>([])
+  const [requestedHomeId, setRequestedHomeId] = useState("")
+  const [selectedHomeId, setSelectedHomeId] = useState("")
+  const [selectedHome, setSelectedHome] = useState<HomeDetail | null>(null)
+  const [objects, setObjects] = useState<ObjectItem[]>([])
+  const [historyQuery, setHistoryQuery] = useState("")
+  const [annotationQuery, setAnnotationQuery] = useState("")
+  const [hiddenLabels, setHiddenLabels] = useState<string[]>([])
+  const [homesLoading, setHomesLoading] = useState(true)
+  const [homeLoading, setHomeLoading] = useState(false)
+  const [homesError, setHomesError] = useState<string | null>(null)
+  const [homeError, setHomeError] = useState<string | null>(null)
 
-  const [scene, setScene] = useState<Object3D[]>(IDLE_SCENE)
-  const [detections, setDetections] = useState<Detection[]>([])
-  const [hazards, setHazards] = useState<any[]>([])
-  const [narration, setNarration] = useState<string | null>(null)
-  const [frameCount, setFrameCount] = useState(0)
-  const [sessionSecs, setSessionSecs] = useState(0)
-  const [sessionId, setSessionId] = useState("")
-  const [captureUrl, setCaptureUrl] = useState("")
-  const [copied, setCopied] = useState(false)
-  const [wsStatus, setWsStatus] = useState<"disconnected" | "connecting" | "connected">("disconnected")
-  const [liveMode, setLiveMode] = useState(false)
-  const [selectedObj, setSelectedObj] = useState<number | null>(null)
-  const [availableSessions, setAvailableSessions] = useState<string[]>([])
-  const [isRecording, setIsRecording] = useState(false)
-  const [gps, setGps] = useState<{ lat: number; lng: number } | null>(null)
+  const loadHomes = useCallback(async (signal?: AbortSignal) => {
+    setHomesError(null)
+    setHomesLoading(true)
 
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const reconnectTimeoutRef = useRef<any | null>(null)
-  const reconnectAttemptsRef = useRef(0)
+    try {
+      const response = await fetch(`${API_URL}/api/homes`, {
+        signal,
+        cache: "no-store",
+      })
 
-  useEffect(() => {
-    const id = getSessionId()
-    setSessionId(id)
-    setCaptureUrl(makeShareUrl(id))
-    fetchActiveSessions()
+      if (!response.ok) {
+        throw new Error(`Failed to load homes (${response.status})`)
+      }
 
-    // Check for scan results in localStorage
-    const scanData = localStorage.getItem(`wayfr_scan_${id}`)
-    if (scanData) {
-      try {
-        const parsed = JSON.parse(scanData)
-        if (parsed.objects?.length) {
-          setScene(parsed.objects)
-          setLiveMode(true)
-          setFrameCount(parsed.stats?.total_frames ?? 0)
-        }
-      } catch {}
+      const data: HomesResponse = await response.json()
+      setHomes(data.homes ?? [])
+    } catch (error: unknown) {
+      if (signal?.aborted) return
+      setHomesError(error instanceof Error ? error.message : "Failed to load homes")
+    } finally {
+      if (!signal?.aborted) {
+        setHomesLoading(false)
+      }
     }
   }, [])
 
-  const fetchActiveSessions = async () => {
-    try {
-      const res = await fetch(`${WS_URL.replace("ws", "http")}/sessions/active`)
-      const data = await res.json()
-      setAvailableSessions(data.sessions || [])
-    } catch {}
-  }
+  const loadSelectedHome = useCallback(async (homeId: string, signal?: AbortSignal) => {
+    if (!homeId) {
+      setSelectedHome(null)
+      setObjects([])
+      return
+    }
 
-  const fetchNearbyHazards = async (lat: number, lng: number) => {
-    try {
-      const res = await fetch(`${WS_URL.replace("ws", "http")}/hazards/nearby?lat=${lat}&lng=${lng}`)
-      const data = await res.json()
-      setHazards(data.hazards || [])
-    } catch {}
-  }
+    setHomeLoading(true)
+    setHomeError(null)
 
-  // Session timer
+    try {
+      const [homeResponse, objectsResponse] = await Promise.all([
+        fetch(`${API_URL}/api/homes/${homeId}`, {
+          signal,
+          cache: "no-store",
+        }),
+        fetch(`${API_URL}/api/homes/${homeId}/objects`, {
+          signal,
+          cache: "no-store",
+        }),
+      ])
+
+      if (!homeResponse.ok) {
+        throw new Error(`Failed to load home (${homeResponse.status})`)
+      }
+
+      if (!objectsResponse.ok) {
+        throw new Error(`Failed to load objects (${objectsResponse.status})`)
+      }
+
+      const homeData: HomeResponse = await homeResponse.json()
+      const objectData: ObjectsResponse = await objectsResponse.json()
+
+      setSelectedHome({
+        home_id: homeData.home_id,
+        name: homeData.name,
+        status: homeData.status,
+        num_objects: homeData.num_objects,
+        error: homeData.error ?? null,
+        created_at: homeData.created_at,
+        updated_at: homeData.updated_at,
+      })
+      setObjects(objectData.objects ?? [])
+    } catch (error: unknown) {
+      if (signal?.aborted) return
+      setHomeError(error instanceof Error ? error.message : "Failed to load selected home")
+    } finally {
+      if (!signal?.aborted) {
+        setHomeLoading(false)
+      }
+    }
+  }, [])
+
   useEffect(() => {
-    const t = setInterval(() => setSessionSecs((s) => s + 1), 1000)
-    return () => clearInterval(t)
+    const syncRequestedHome = () => {
+      const params = new URLSearchParams(window.location.search)
+      setRequestedHomeId(params.get("home") ?? "")
+    }
+
+    syncRequestedHome()
+    window.addEventListener("popstate", syncRequestedHome)
+
+    return () => window.removeEventListener("popstate", syncRequestedHome)
   }, [])
 
-  // ── Notification sounds ──────────────────────────────────────────────────
-  const playNotification = useCallback((urgency: string) => {
-    try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.type = urgency === "high" ? "sawtooth" : "sine"
-      osc.frequency.setValueAtTime(urgency === "high" ? 440 : 880, ctx.currentTime)
-      gain.gain.setValueAtTime(0.1, ctx.currentTime)
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2)
-      osc.connect(gain)
-      gain.connect(ctx.destination)
-      osc.start()
-      osc.stop(ctx.currentTime + 0.2)
-    } catch {}
+  useEffect(() => {
+    const controller = new AbortController()
+    void loadHomes(controller.signal)
+    return () => controller.abort()
+  }, [loadHomes])
+
+  useEffect(() => {
+    if (homes.length === 0) {
+      setSelectedHomeId("")
+      return
+    }
+
+    if (requestedHomeId && homes.some((home) => home.home_id === requestedHomeId)) {
+      setSelectedHomeId((current) => (current === requestedHomeId ? current : requestedHomeId))
+      return
+    }
+
+    setSelectedHomeId((current) => {
+      if (current && homes.some((home) => home.home_id === current)) {
+        return current
+      }
+
+      return homes[0]?.home_id ?? ""
+    })
+  }, [homes, requestedHomeId])
+
+  useEffect(() => {
+    setAnnotationQuery("")
+    setHiddenLabels([])
+  }, [selectedHomeId])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    void loadSelectedHome(selectedHomeId, controller.signal)
+    return () => controller.abort()
+  }, [selectedHomeId, loadSelectedHome])
+
+  const sortedHomes = useMemo(() => {
+    return [...homes].sort((left, right) => {
+      const leftTime = parseTimestamp(left.created_at)?.getTime() ?? 0
+      const rightTime = parseTimestamp(right.created_at)?.getTime() ?? 0
+      return rightTime - leftTime
+    })
+  }, [homes])
+
+  const filteredHomes = useMemo(() => {
+    const query = historyQuery.trim().toLowerCase()
+    if (!query) return sortedHomes
+
+    return sortedHomes.filter((home) => {
+      return (
+        home.name.toLowerCase().includes(query) ||
+        home.home_id.toLowerCase().includes(query) ||
+        home.status.toLowerCase().includes(query)
+      )
+    })
+  }, [historyQuery, sortedHomes])
+
+  const activeHome = selectedHome ?? sortedHomes.find((home) => home.home_id === selectedHomeId) ?? null
+  const activeHomeUpdatedAt = selectedHome?.updated_at ?? activeHome?.created_at
+  const sceneUrl = activeHome ? `${API_URL}/api/homes/${activeHome.home_id}/scene` : ""
+  const sceneVersion = activeHomeUpdatedAt ? String(activeHomeUpdatedAt) : undefined
+  const uniqueLabelCount = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          objects
+            .map((object) => object.label.trim().toLowerCase())
+            .filter(Boolean)
+        )
+      ).length,
+    [objects]
+  )
+
+  const filteredObjects = useMemo(() => {
+    const query = annotationQuery.trim().toLowerCase()
+
+    return objects.filter((object) => {
+      const label = object.label.trim().toLowerCase()
+      if (hiddenLabels.includes(label)) return false
+      if (query && !label.includes(query)) return false
+      return true
+    })
+  }, [annotationQuery, hiddenLabels, objects])
+
+  const selectHome = useCallback((homeId: string) => {
+    setSelectedHomeId(homeId)
+    setRequestedHomeId(homeId)
+    window.history.replaceState({}, "", `/dashboard?home=${homeId}`)
   }, [])
 
-  // ── Audio queue ───────────────────────────────────────────────────────────
-  const drainAudioQueue = useCallback(() => {
-    if (playingRef.current || audioQueueRef.current.length === 0) return
-    playingRef.current = true
-    const b64 = audioQueueRef.current.shift()!
-    const binary = atob(b64)
-    const bytes = new Uint8Array(binary.length)
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-    const blob = new Blob([bytes], { type: "audio/mp3" })
+  const refreshAll = useCallback(() => {
+    void loadHomes()
+    if (selectedHomeId) {
+      void loadSelectedHome(selectedHomeId)
+    }
+  }, [loadHomes, loadSelectedHome, selectedHomeId])
+
+  const downloadObjects = useCallback(() => {
+    if (!activeHome) return
+
+    const payload = {
+      home_id: activeHome.home_id,
+      name: activeHome.name,
+      status: activeHome.status,
+      objects,
+    }
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    })
     const url = URL.createObjectURL(blob)
-    const audio = new Audio(url)
-    audio.onended = () => {
-      URL.revokeObjectURL(url)
-      playingRef.current = false
-      drainAudioQueue()
-    }
-    audio.onerror = () => {
-      URL.revokeObjectURL(url)
-      playingRef.current = false
-      drainAudioQueue()
-    }
-    audio.play().catch(() => {
-      playingRef.current = false
-      drainAudioQueue()
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = `${activeHome.home_id}-objects.json`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }, [activeHome, objects])
+
+  const toggleHiddenLabel = useCallback((label: string) => {
+    setHiddenLabels((current) => {
+      if (current.includes(label)) {
+        return current.filter((item) => item !== label)
+      }
+
+      return [...current, label]
     })
   }, [])
 
-  // ── WebSocket connection ──────────────────────────────────────────────────
-  const connectWs = useCallback(() => {
-    if (!sessionId) return
-    if (wsRef.current?.readyState === WebSocket.OPEN) return
+  const selectAllLabels = useCallback(() => {
+    setHiddenLabels([])
+  }, [])
 
-    setWsStatus("connecting")
-    const ws = new WebSocket(`${WS_URL}/ws/${sessionId}`)
-    wsRef.current = ws
-
-    ws.onopen = () => {
-      setWsStatus("connected")
-      reconnectAttemptsRef.current = 0
-    }
-
-    ws.onclose = () => {
-      setWsStatus("disconnected")
-      const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000)
-      reconnectAttemptsRef.current++
-      reconnectTimeoutRef.current = setTimeout(connectWs, delay)
-    }
-
-    ws.onerror = () => {
-      ws.close()
-    }
-
-    ws.onmessage = (e) => {
-      try {
-        const msg = JSON.parse(e.data)
-
-        if (msg.type === "audio") {
-          setNarration(msg.text)
-          setLiveMode(true)
-          setFrameCount((n: number) => n + 1)
-          if (msg.data) {
-            audioQueueRef.current.push(msg.data)
-            drainAudioQueue()
-          }
-        }
-
-        if (msg.type === "detections") {
-          const objs: Object3D[] = (msg.objects || []).map((o: any) => ({
-            label: o.label,
-            x: o.x || 0,
-            y: 0,
-            z: o.z || 1.5,
-            urgency: o.urgency,
-            confidence: o.confidence,
-          }))
-          if (objs.length > 0) {
-            setScene(objs)
-            setLiveMode(true)
-            setFrameCount((n: number) => n + 1)
-            objs.forEach((obj: Object3D) => {
-              if (obj.urgency === "high") playNotification("high")
-              setDetections((prev: Detection[]) =>
-                [
-                  {
-                    id: Date.now() + Math.random(),
-                    ts: nowTs(),
-                    label: obj.label,
-                    urgency: obj.urgency,
-                    distance: `${Math.sqrt(obj.x ** 2 + obj.z ** 2).toFixed(1)}m`,
-                    direction: obj.x < -0.5 ? "left" : obj.x > 0.5 ? "right" : "ahead",
-                  },
-                  ...prev,
-                ].slice(0, 50),
-              )
-            })
-          }
-        }
-
-        if (msg.type === "hazard_alert") {
-          setLiveMode(true)
-          playNotification("high")
-          const h = msg.hazard
-          setDetections((prev: Detection[]) => [
-            {
-              id: Date.now(),
-              ts: nowTs(),
-              label: `\u26A0 ${h.type}`,
-              urgency: "high",
-              distance: `${h.distance_m}m`,
-              direction: h.direction,
-            },
-            ...prev,
-          ])
-        }
-
-        if (msg.gps) {
-          setGps(msg.gps)
-          fetchNearbyHazards(msg.gps.lat, msg.gps.lng)
-        }
-      } catch {}
-    }
-  }, [sessionId, drainAudioQueue, playNotification])
-
-  useEffect(() => {
-    connectWs()
-    return () => {
-      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current)
-      wsRef.current?.close()
-    }
-  }, [connectWs])
-
-  // ── Voice messaging ───────────────────────────────────────────────────────
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const recorder = new MediaRecorder(stream)
-      mediaRecorderRef.current = recorder
-      const chunks: Blob[] = []
-
-      recorder.ondataavailable = (e) => chunks.push(e.data)
-      recorder.onstop = async () => {
-        const blob = new Blob(chunks, { type: "audio/webm" })
-        const reader = new FileReader()
-        reader.readAsDataURL(blob)
-        reader.onloadend = () => {
-          const base64 = (reader.result as string).split(",")[1]
-          wsRef.current?.send(JSON.stringify({ type: "caregiver_voice", data: base64 }))
-        }
-        stream.getTracks().forEach((t) => t.stop())
-      }
-
-      recorder.start()
-      setIsRecording(true)
-    } catch {}
-  }
-
-  const stopRecording = () => {
-    mediaRecorderRef.current?.stop()
-    setIsRecording(false)
-  }
-
-  const exportLog = () => {
-    const data = JSON.stringify(detections, null, 2)
-    const blob = new Blob([data], { type: "application/json" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `wayfr-session-${sessionId}-${Date.now()}.json`
-    a.click()
-  }
-
-  const sessionTime = `${String(Math.floor(sessionSecs / 60)).padStart(2, "0")}:${String(sessionSecs % 60).padStart(2, "0")}`
-
-  const copyCapture = useCallback(() => {
-    navigator.clipboard.writeText(captureUrl)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }, [captureUrl])
-
-  const wsColor = wsStatus === "connected" ? "bg-green-400" : wsStatus === "connecting" ? "bg-mango animate-pulse" : "bg-muted-foreground"
-
-  const selectedObjectData = selectedObj !== null ? scene[selectedObj] : null
+  const unselectAllLabels = useCallback(() => {
+    setHiddenLabels(
+      Array.from(
+        new Set(
+          objects
+            .map((object) => object.label.trim().toLowerCase())
+            .filter(Boolean)
+        )
+      )
+    )
+  }, [objects])
 
   return (
-    <main className="min-h-screen bg-background">
-      <Navbar />
-
-      <div className="mx-auto max-w-7xl px-4 pt-20 pb-12">
-        {/* Top Header & Session Picker */}
-        <div className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-border pb-6">
-          <div className="flex-1 min-w-[300px]">
-            <p className="text-xs text-muted-foreground font-mono uppercase tracking-widest">Active Surveillance</p>
-            <h1 className="mt-1 text-2xl font-bold tracking-tight">Caregiver Dashboard</h1>
-            <div className="mt-4 flex items-center gap-4">
-              <Select value={sessionId} onValueChange={(val) => val && setSessionId(val)}>
-                <SelectTrigger className="w-64 border-mango/20 bg-card font-mono text-xs">
-                  <SelectValue placeholder="Switch session..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableSessions.map((s) => (
-                    <SelectItem key={s} value={s} className="font-mono text-xs">
-                      {s} {s === getSessionId() && "(Current)"}
-                    </SelectItem>
-                  ))}
-                  {availableSessions.length === 0 && (
-                    <SelectItem value={sessionId} disabled className="font-mono text-xs italic">
-                      No other active sessions
-                    </SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-              <Button size="icon" variant="ghost" onClick={fetchActiveSessions} className="h-9 w-9 text-muted-foreground hover:text-mango">
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-            </div>
+    <main className="min-h-full bg-background">
+      <div className="mx-auto w-full max-w-[1700px] px-4 py-4 sm:px-6 lg:px-8">
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-mango/90">Dashboard</p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">Saved scenes</h1>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="flex flex-col items-end">
-              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Connection</span>
-              <div className="flex items-center gap-1.5 text-xs font-mono">
-                <span className={cn("h-2 w-2 rounded-full", wsColor)} />
-                {wsStatus} &middot; {sessionTime}
-              </div>
-            </div>
-            <div className="h-10 w-[1px] bg-border mx-2 hidden sm:block" />
-            <Button size="sm" onClick={exportLog} className="bg-card border border-border text-foreground hover:bg-muted font-mono text-[10px] h-9">
-              <Download className="mr-2 h-3.5 w-3.5" />
-              EXPORT LOG
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" className="rounded-full" onClick={refreshAll}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Refresh
             </Button>
+            <Link
+              href="/setup"
+              className="inline-flex items-center justify-center rounded-full bg-mango px-4 py-2 text-sm font-medium text-background transition-colors hover:bg-mango/90"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              New map
+            </Link>
           </div>
-        </div>
+        </header>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-          {/* Main Content Area */}
-          <div className="lg:col-span-8 space-y-6">
-            <SessionCard
-              name={`Session ${sessionId}`}
-              status={wsStatus === "connected" ? "active" : "paused"}
-              speedMph={frameCount > 0 ? 2.4 : 0}
-              lastSeen={nowTs()}
-              nearbyHazards={hazards.length}
-              lastDetection={detections[0]?.label || "Initializing..."}
-            />
+        {homesError ? (
+          <div className="mt-6 rounded-[24px] border border-red-500/20 bg-red-500/5 px-4 py-4 text-sm text-red-500">
+            <div className="flex items-start gap-3">
+              <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+              <div>
+                <p className="font-medium">Unable to load saved homes.</p>
+                <p className="mt-1 text-red-500/80">{homesError}</p>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
-            <div className="rounded-xl border border-mango/15 bg-card overflow-hidden">
-              <div className="border-b border-border px-4 py-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="h-5 rounded-sm border-mango/20 bg-mango/5 text-mango text-[10px] font-bold px-1.5 uppercase tracking-tighter">LIVE 3D</Badge>
-                  <span className="text-xs font-semibold">Environment Reconstruction</span>
+        {!homesLoading && homes.length === 0 && !homesError ? <EmptyPanel /> : null}
+
+        {homes.length > 0 ? (
+          <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <section className="min-w-0 space-y-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="truncate text-2xl font-semibold tracking-tight text-foreground">
+                      {activeHome?.name ?? "Select a scene"}
+                    </h2>
+                    {activeHome ? (
+                      <Badge className={cn("border font-medium", getStatusClasses(activeHome.status))}>
+                        {getStatusLabel(activeHome.status)}
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {activeHome
+                      ? `Created ${formatDateTime(activeHome.created_at)}. Updated ${formatRelative(activeHomeUpdatedAt)}.`
+                      : "Choose a saved scene from history."}
+                  </p>
                 </div>
-                <Badge variant="outline" className="text-[10px] font-mono border-border text-muted-foreground">
-                   {scene.filter((o: Object3D) => o.label !== "waiting\u2026").length} objects in viewport
-                </Badge>
-              </div>
-              <div className="p-2 relative group">
-                <World3DViewer objects={scene} autoOrbit onObjectClick={setSelectedObj} />
-                
-                {/* Object Detail Panel Overlay */}
-                {selectedObjectData && (
-                  <Card className="absolute right-6 top-6 w-56 border-mango/30 bg-background/90 backdrop-blur shadow-2xl p-4 animate-in fade-in slide-in-from-right-4">
-                    <div className="flex items-center justify-between mb-3 border-b border-border pb-2">
-                       <h4 className="text-xs font-bold uppercase text-muted-foreground tracking-widest">Object Details</h4>
-                       <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => setSelectedObj(null)}>&times;</Button>
-                    </div>
-                    <div className="space-y-3">
-                      <div>
-                        <p className="text-[10px] text-muted-foreground uppercase font-mono tracking-tighter">Classification</p>
-                        <p className="text-sm font-bold text-foreground">{selectedObjectData.label}</p>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <p className="text-[10px] text-muted-foreground uppercase font-mono tracking-tighter">Distance</p>
-                          <p className="text-xs font-mono font-bold text-mango">{Math.sqrt(selectedObjectData.x**2 + selectedObjectData.z**2).toFixed(2)}m</p>
-                        </div>
-                        <div>
-                          <p className="text-[10px] text-muted-foreground uppercase font-mono tracking-tighter">Urgency</p>
-                          <Badge variant="outline" className={cn("text-[9px] h-4 uppercase px-1 font-bold", 
-                            selectedObjectData.urgency === "high" ? "border-red-500/30 text-red-400 bg-red-400/5" : "border-mango/20 text-mango")}>
-                            {selectedObjectData.urgency}
-                          </Badge>
-                        </div>
-                      </div>
-                      <div className="pt-2 border-t border-border">
-                         <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono italic">
-                           <Info className="h-3 w-3" />
-                           Tap mapping to highlight
-                         </div>
-                      </div>
-                    </div>
-                  </Card>
-                )}
-              </div>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-               <NearbyHazards items={hazards.map((h: any) => ({
-                 id: h.id,
-                 type: h.label,
-                 severity: h.severity,
-                 distanceM: h.distance_m,
-                 direction: h.direction,
-                 description: h.description,
-                 verifiedCount: h.verified_count
-               }))} />
-               
-               <Card className="border-border bg-card p-5 flex flex-col justify-between">
-                 <div>
-                   <h3 className="text-sm font-semibold">Communicate with user</h3>
-                   <p className="mt-1 text-xs text-muted-foreground">Press and hold to send a direct voice message to the user's mobile device.</p>
-                 </div>
-                 
-                 <div className="mt-8 flex flex-col items-center gap-4">
-                    <Button 
-                      size="lg"
-                      className={cn(
-                        "h-20 w-20 rounded-full transition-all duration-300",
-                        isRecording ? "bg-red-500 hover:bg-red-600 scale-110 shadow-[0_0_20px_rgba(239,68,68,0.5)]" : "bg-mango hover:bg-mango/90"
-                      )}
-                      onMouseDown={startRecording}
-                      onMouseUp={stopRecording}
-                      onMouseLeave={isRecording ? stopRecording : undefined}
-                    >
-                      {isRecording ? <MicOff className="h-8 w-8 text-white" animate-pulse /> : <Mic className="h-8 w-8 text-white" />}
+                {activeHome ? (
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" className="rounded-full" onClick={downloadObjects}>
+                      <Download className="mr-2 h-4 w-4" />
+                      Export
                     </Button>
-                    <span className={cn("text-[10px] font-mono uppercase tracking-widest", isRecording ? "text-red-400 animate-pulse" : "text-muted-foreground")}>
-                      {isRecording ? "Transmitting audio..." : "Hold to talk"}
-                    </span>
-                 </div>
-                 
-                 <div className="mt-6 rounded-lg border border-border bg-background/50 p-3 italic text-[11px] text-muted-foreground">
-                   &ldquo;Watch out for the construction barrier on your left.&rdquo;
-                 </div>
-               </Card>
-            </div>
-          </div>
+                    {activeHome.status === "ready" ? (
+                      <>
+                        <a
+                          href={sceneUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center justify-center rounded-full border border-border bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-muted"
+                        >
+                          <ExternalLink className="mr-2 h-4 w-4" />
+                          Open GLB
+                        </a>
+                      </>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
 
-          {/* Sidebars */}
-          <div className="lg:col-span-4 space-y-6">
-            <DetectionFeed items={detections.map((d: Detection) => ({
-              id: d.id.toString(),
-              timestamp: d.ts,
-              type: d.label.includes("Hazard") ? "hazard_alert" : "obstacle",
-              content: `${d.label} at ${d.distance} ${d.direction}`,
-              urgency: d.urgency === "high" ? "urgent" : d.urgency === "medium" ? "normal" : "low"
-            }))} />
+              {homeError ? (
+                <div className="rounded-[24px] border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-500">
+                  {homeError}
+                </div>
+              ) : null}
 
-            <Card className="border-border bg-card overflow-hidden">
-               <div className="border-b border-border px-4 py-3 bg-muted/30">
-                  <h4 className="text-xs font-bold uppercase tracking-widest">Real-time Narration</h4>
-               </div>
-               <div className="p-4 space-y-4">
-                  <div className="min-h-[60px] text-sm leading-relaxed font-medium">
-                    {narration ? (
-                      <span className="text-foreground italic">&ldquo;{narration}&rdquo;</span>
+              {homeLoading ? (
+                <div className="flex items-center gap-2 rounded-[24px] bg-card/55 px-4 py-3 text-sm text-muted-foreground backdrop-blur-xl">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading scene...
+                </div>
+              ) : null}
+
+              {activeHome?.status === "ready" ? (
+                <div className="space-y-4">
+                  <div className="rounded-[32px] bg-card/40 p-1 shadow-[0_24px_80px_rgba(0,0,0,0.08)] backdrop-blur-xl dark:shadow-[0_32px_100px_rgba(0,0,0,0.28)]">
+                    <HomeSceneViewer
+                      homeId={activeHome.home_id}
+                      glbUrl={sceneUrl}
+                      sceneVersion={sceneVersion}
+                      objects={filteredObjects}
+                      height={700}
+                      className="rounded-[30px]"
+                    />
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
+                    <div className="rounded-[24px] bg-card/45 px-4 py-4 backdrop-blur-xl">
+                      <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                        Objects
+                      </p>
+                      <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
+                        {objects.length}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">Anchored in this scene</p>
+                    </div>
+
+                    <div className="rounded-[24px] bg-card/45 px-4 py-4 backdrop-blur-xl">
+                      <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                        Labels
+                      </p>
+                      <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
+                        {uniqueLabelCount}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">Distinct annotation types</p>
+                    </div>
+
+                    <div className="rounded-[24px] bg-card/45 px-4 py-4 backdrop-blur-xl">
+                      <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                        Visible
+                      </p>
+                      <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
+                        {filteredObjects.length}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">Matching current filters</p>
+                    </div>
+
+                    <div className="rounded-[24px] bg-card/45 px-4 py-4 backdrop-blur-xl">
+                      <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                        Updated
+                      </p>
+                      <p className="mt-2 text-lg font-semibold tracking-tight text-foreground">
+                        {formatRelative(activeHomeUpdatedAt)}
+                      </p>
+                      <p className="mt-1 truncate text-xs text-muted-foreground">
+                        {activeHome.home_id}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {activeHome?.status === "processing" ? (
+                <div className="rounded-[28px] bg-mango/7 px-6 py-8">
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-mango/10 text-mango">
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-foreground">Scene is still processing</h3>
+                      <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                        Setup is still building the annotated GLB and object anchors for this home.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {activeHome?.status === "failed" ? (
+                <div className="rounded-[28px] bg-red-500/6 px-6 py-8">
+                  <h3 className="text-lg font-semibold text-red-500">Scene build failed</h3>
+                  <p className="mt-2 text-sm leading-6 text-red-500/80">
+                    {selectedHome?.error ?? "The backend returned a failed status for this run."}
+                  </p>
+                </div>
+              ) : null}
+            </section>
+
+            <aside className="space-y-4">
+              <div className="rounded-[28px] bg-card/52 p-4 backdrop-blur-xl">
+                <SceneAnnotationPanel
+                  className="border-0 bg-transparent shadow-none ring-0"
+                  objects={objects}
+                  visibleObjects={filteredObjects}
+                  query={annotationQuery}
+                  hiddenLabels={hiddenLabels}
+                  onQueryChange={setAnnotationQuery}
+                  onToggleLabel={toggleHiddenLabel}
+                  onSelectAll={selectAllLabels}
+                  onUnselectAll={unselectAllLabels}
+                  onReset={() => {
+                    setAnnotationQuery("")
+                    setHiddenLabels([])
+                  }}
+                />
+
+                <Separator className="my-4 bg-border/50" />
+
+                <div className="space-y-3">
+                  <div>
+                    <h3 className="text-lg font-semibold text-foreground">History</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">Newest first.</p>
+                  </div>
+
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={historyQuery}
+                      onChange={(event) => setHistoryQuery(event.target.value)}
+                      placeholder="Search scenes"
+                      className="rounded-2xl border-border/70 bg-background/55 pl-10"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    {filteredHomes.length > 0 ? (
+                      filteredHomes.map((home) => {
+                        const isSelected = home.home_id === activeHome?.home_id
+
+                        return (
+                          <button
+                            key={home.home_id}
+                            type="button"
+                            onClick={() => selectHome(home.home_id)}
+                            className={cn(
+                              "w-full rounded-2xl px-4 py-3 text-left transition-colors",
+                              isSelected
+                                ? "bg-mango/10 text-foreground"
+                                : "bg-background/45 text-foreground hover:bg-mango/6"
+                            )}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="truncate font-medium">{home.name}</p>
+                                <p className="mt-1 font-mono text-[11px] text-muted-foreground">{home.home_id}</p>
+                              </div>
+                              <Badge className={cn("border shrink-0", getStatusClasses(home.status))}>
+                                {getStatusLabel(home.status)}
+                              </Badge>
+                            </div>
+                            <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                              <span>{home.num_objects} objects</span>
+                              <span>{formatDateTime(home.created_at)}</span>
+                            </div>
+                          </button>
+                        )
+                      })
                     ) : (
-                      <span className="text-muted-foreground italic">Waiting for AI narrator...</span>
+                      <div className="rounded-2xl bg-background/35 px-4 py-5 text-sm text-muted-foreground">
+                        No scenes match this filter.
+                      </div>
                     )}
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    <Badge variant="outline" className="text-[9px] font-mono border-mango/20 bg-mango/5 text-mango">LLAMA-4-CAREGIVER</Badge>
-                    <Badge variant="outline" className="text-[9px] font-mono border-border bg-background/50">CARTESIA-ELAINE-V2</Badge>
-                  </div>
-               </div>
-            </Card>
-
-            <Card className="border-border bg-card p-4">
-              <div className="flex items-center gap-2 text-destructive mb-3">
-                 <AlertTriangle className="h-4 w-4" />
-                 <h4 className="text-[10px] font-bold uppercase tracking-widest">System Alerts</h4>
+                </div>
               </div>
-              <div className="space-y-2">
-                 {wsStatus === "disconnected" && (
-                   <div className="text-[11px] text-destructive bg-destructive/10 border border-destructive/20 rounded px-2 py-1.5 font-medium">
-                     CRITICAL: Survelliance connection lost. Reconnecting...
-                   </div>
-                 )}
-                 {hazards.length > 0 && (
-                   <div className="text-[11px] text-orange-500 bg-orange-500/10 border border-orange-500/20 rounded px-2 py-1.5 font-medium">
-                     WARNING: {hazards.length} hazards verified nearby.
-                   </div>
-                 )}
-                 {wsStatus === "connected" && hazards.length === 0 && (
-                   <div className="text-[11px] text-green-500 bg-green-500/10 border border-orange-500/20 rounded px-2 py-1.5 font-medium">
-                     System active. Environment safe.
-                   </div>
-                 )}
-              </div>
-            </Card>
+            </aside>
           </div>
-        </div>
+        ) : null}
       </div>
     </main>
   )

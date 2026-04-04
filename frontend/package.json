@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "dev": "WATCHPACK_POLLING=true /opt/homebrew/opt/node/bin/node ./node_modules/next/dist/bin/next dev",
+    "build": "/opt/homebrew/opt/node/bin/node ./node_modules/next/dist/bin/next build",
+    "start": "/opt/homebrew/opt/node/bin/node ./node_modules/next/dist/bin/next start",
     "lint": "eslint"
   },
   "dependencies": {

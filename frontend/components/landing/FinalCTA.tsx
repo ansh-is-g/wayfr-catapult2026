@@ -49,7 +49,7 @@ export function FinalCTA() {
           <div className="mt-12 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
             <Link href="/verify">
               <InteractiveHoverButton className="bg-mango text-background border-mango/50 font-semibold px-8">
-                Report an obstacle
+                Open report
               </InteractiveHoverButton>
             </Link>
             <Link href="/dashboard">
@@ -58,7 +58,7 @@ export function FinalCTA() {
                 size="lg"
                 className="rounded-full border-border/60 hover:border-mango/40 hover:bg-mango/5 px-8"
               >
-                Caregiver dashboard
+                Home dashboard
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </Link>

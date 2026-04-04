@@ -19,7 +19,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "wayfr — Navigate freely.",
   description:
-    "Real-time AI navigation for the visually impaired. Obstacle detection, community hazards, and caregiver monitoring — powered by four AI models in parallel.",
+    "3D spatial annotation for real-world scenes. Shared room meshes, local-first scene history, persona overlays, and guided navigation.",
 }
 
 export default function RootLayout({
@@ -31,6 +31,7 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${outfitSans.variable} ${geistMono.variable}`}
+      data-scroll-behavior="smooth"
       suppressHydrationWarning
     >
       <body className="min-h-full antialiased">

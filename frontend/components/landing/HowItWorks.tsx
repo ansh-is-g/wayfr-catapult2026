@@ -6,7 +6,7 @@ import { MagicCard } from "@/components/ui/magic-card"
 import { BlurFade } from "@/components/ui/blur-fade"
 import { TextAnimate } from "@/components/ui/text-animate"
 import { HyperText } from "@/components/ui/hyper-text"
-import { Eye, Brain, Volume2, Users } from "lucide-react"
+import { Camera, Brain, Volume2, Users } from "lucide-react"
 import { useTheme } from "next-themes"
 import { cn } from "@/lib/utils"
 
@@ -42,9 +42,9 @@ const Node = forwardRef<HTMLDivElement, NodeProps>(
 Node.displayName = "Node"
 
 const steps = [
-  { step: "01", title: "Capture \u2192 3D", body: "Each frame is depth-mapped by DepthAnything v2, then back-projected into a persistent 3D point cloud updated every 200ms." },
-  { step: "02", title: "Detect", body: "Novel 2D views rendered from the 3D scene pass through the RCAC custom VLM (or Gemini Flash fallback) for open-set detection." },
-  { step: "03", title: "Narrate", body: "Annotations are back-projected to 3D coords. Claude Haiku synthesises one clear sentence. ElevenLabs speaks it under 1 second." },
+  { step: "01", title: "Capture \u2192 3D", body: "Each frame becomes a shared scene layer, then back-projected into a persistent 3D map updated continuously." },
+  { step: "02", title: "Annotate", body: "Novel 2D views rendered from the 3D scene are turned into anchored objects, labels, and spatial context." },
+  { step: "03", title: "Persona layer", body: "Annotations are filtered into persona-specific guidance. A short spoken summary can be generated on top." },
 ]
 
 export function HowItWorks() {
@@ -72,7 +72,7 @@ export function HowItWorks() {
               2D in. 3D understood. Audio out.
             </TextAnimate>
             <p className="mx-auto mt-4 max-w-2xl text-muted-foreground">
-              Every frame is reconstructed in 3D, synthesised into novel views, and detected by a custom VLM — under 1 second from camera to ear.
+              Every frame is reconstructed in 3D, organized into a shared scene, and then surfaced through persona-specific overlays.
             </p>
           </div>
         </BlurFade>
@@ -84,27 +84,27 @@ export function HowItWorks() {
           >
             <Node
               ref={glassesRef}
-              icon={<Eye className="h-7 w-7" />}
-              label="Ray-Ban Glasses"
-              sublabel="5fps JPEG"
+              icon={<Camera className="h-7 w-7" />}
+              label="Capture"
+              sublabel="frame input"
             />
             <Node
               ref={communityRef}
               icon={<Users className="h-7 w-7" />}
-              label="Community"
-              sublabel="Hazard map"
+              label="Shared scene"
+              sublabel="scene map"
             />
             <Node
               ref={aiRef}
               icon={<Brain className="h-7 w-7" />}
               label="wayfr AI"
-              sublabel="RCAC + Gemini"
+              sublabel="3D annotation"
               highlight
             />
             <Node
               ref={audioRef}
               icon={<Volume2 className="h-7 w-7" />}
-              label="Audio"
+              label="Output"
               sublabel="ElevenLabs TTS"
             />
 

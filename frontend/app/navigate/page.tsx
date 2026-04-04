@@ -1,6 +1,7 @@
 "use client"
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react"
+import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { Navbar } from "@/components/nav/Navbar"
 import { Button } from "@/components/ui/button"
@@ -40,6 +41,29 @@ type LocalizeResponse = {
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unknown error"
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result
+      if (typeof result !== "string") {
+        reject(new Error("Failed to read image"))
+        return
+      }
+
+      const payload = result.split(",")[1]
+      if (!payload) {
+        reject(new Error("Invalid image encoding"))
+        return
+      }
+
+      resolve(payload)
+    }
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read image"))
+    reader.readAsDataURL(file)
+  })
 }
 
 function NavigatePageContent() {
@@ -113,8 +137,7 @@ function NavigatePageContent() {
     setLocalizing(true)
     setLocalizePose(null)
     try {
-      const buf = await file.arrayBuffer()
-      const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)))
+      const b64 = await fileToBase64(file)
       const res = await fetch(`${API_URL}/api/homes/${homeId}/localize`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -143,12 +166,12 @@ function NavigatePageContent() {
         <Navbar />
         <main className="mx-auto max-w-xl px-6 pt-28 pb-20 text-center space-y-4">
           <p className="text-muted-foreground">No home selected.</p>
-          <a
+          <Link
             href="/setup"
             className="inline-block rounded-xl bg-primary hover:bg-primary/90 px-6 py-2.5 text-sm font-semibold text-primary-foreground transition-colors"
           >
             Set up a home first →
-          </a>
+          </Link>
         </main>
       </div>
     )
@@ -245,6 +268,7 @@ function NavigatePageContent() {
 
             {/* 3D scene with navigation path */}
             <HomeSceneViewer
+              homeId={homeId}
               glbUrl={`${API_URL}/api/homes/${homeId}/scene`}
               objects={objects}
               path={plan.waypoints}

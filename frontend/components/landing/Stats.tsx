@@ -9,7 +9,7 @@ const stats = [
   { value: 253, suffix: "M+", label: "visually impaired worldwide", prefix: "" },
   { value: 1010, suffix: "ms", label: "end-to-end latency target", prefix: "<" },
   { value: 4, suffix: "", label: "AI models in pipeline", prefix: "" },
-  { value: 100, suffix: "m", label: "hazard detection radius", prefix: "" },
+  { value: 100, suffix: "m", label: "shared scene radius", prefix: "" },
 ]
 
 export function Stats() {
