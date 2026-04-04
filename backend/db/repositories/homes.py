@@ -91,6 +91,7 @@ async def upsert_objects(home_id: str, objects: list[ObjectPosition]) -> None:
     client = get_supabase()
     if client is None:
         return
+    client.table("object_positions").delete().eq("home_id", home_id).execute()
     if not objects:
         return
     rows = [

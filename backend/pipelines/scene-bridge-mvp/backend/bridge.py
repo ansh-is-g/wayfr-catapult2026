@@ -598,7 +598,8 @@ def compute_scene_objects(
     min_observations = _int_env("BRIDGE_MIN_OBSERVATIONS", 2)
     max_scene_fraction = _float_env("BRIDGE_MAX_SCENE_FRACTION", 0.06)
     hard_reject_fraction = _float_env("BRIDGE_HARD_REJECT_SCENE_FRACTION", 0.20)
-    max_snap_distance = _float_env("BRIDGE_MAX_SNAP_DISTANCE", max(0.02, scene_diag * 0.002))
+    default_snap_distance = max(0.05, scene_diag * 0.01)
+    max_snap_distance = _float_env("BRIDGE_MAX_SNAP_DISTANCE", default_snap_distance)
     cluster_voxel_size = _float_env("BRIDGE_CLUSTER_VOXEL_SIZE", max(0.02, scene_diag * 0.006))
     # Anchor radius: mask-lifted points must be within this distance of the
     # ray-cast anchor.  Scales with scene but capped at 1.5m.
@@ -677,7 +678,7 @@ def compute_scene_objects(
                     snapped_indices = fallback_indices
                     skipped_counts["recovered_without_anchor_filter"] += 1
             if len(snapped_indices) < min_points_per_obs and not use_anchor_filter:
-                relaxed_snap_distance = max(max_snap_distance * 2.5, 0.05)
+                relaxed_snap_distance = max(max_snap_distance * 2.5, 0.25)
                 fallback_indices = _snap_world_points_to_glb(
                     world_points,
                     world_transform,

@@ -19,13 +19,17 @@ import bridge
 
 def _mask_to_rle(mask: np.ndarray) -> dict[str, list[int]]:
     flat = mask.flatten(order="F").astype(np.uint8)
-    diffs = np.diff(flat, prepend=0, append=0)
-    starts = np.where(diffs != 0)[0]
-    lengths = np.diff(starts)
-    if flat[0] == 0:
-        counts = lengths.tolist()
-    else:
-        counts = [0] + lengths.tolist()
+    counts: list[int] = []
+    current_value = 0
+    run_length = 0
+    for value in flat.tolist():
+        if value == current_value:
+            run_length += 1
+            continue
+        counts.append(run_length)
+        current_value = value
+        run_length = 1
+    counts.append(run_length)
     return {"size": [int(mask.shape[0]), int(mask.shape[1])], "counts": counts}
 
 
