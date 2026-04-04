@@ -34,34 +34,33 @@ function DetectionItem({ item }: { item: Detection }) {
   )
 }
 
-const mockDetections: Detection[] = [
-  { id: "1", timestamp: "10:32:07", type: "obstacle", content: "Curb drop 3 feet ahead on your right", urgency: "urgent" },
-  { id: "2", timestamp: "10:32:04", type: "text",     content: "Sign reads: PULL TO OPEN",            urgency: "normal" },
-  { id: "3", timestamp: "10:32:01", type: "obstacle", content: "Clear path ahead, continuing forward", urgency: "low" },
-  { id: "4", timestamp: "10:31:58", type: "hazard_alert", content: "Community alert: Construction 32m ahead, verified by 4 people", urgency: "urgent" },
-  { id: "5", timestamp: "10:31:54", type: "scene",    content: "Busy corridor with door 6 feet ahead", urgency: "low" },
-  { id: "6", timestamp: "10:31:50", type: "obstacle", content: "Pole on your left, medium distance",  urgency: "normal" },
-]
-
-export function DetectionFeed() {
+export function DetectionFeed({ items = [] }: { items?: Detection[] }) {
   return (
     <div className="rounded-xl border border-border bg-card">
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
-        <h3 className="text-sm font-semibold">Detection feed</h3>
+        <div className="flex items-center gap-2">
+           <h3 className="text-sm font-semibold">Detection feed</h3>
+        </div>
         <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span className="h-1.5 w-1.5 rounded-full bg-mango animate-pulse" />
-          Live
+          Live telemetry
         </span>
       </div>
-      <ScrollArea className="h-72">
+      <div className="h-96 overflow-y-auto">
         <div className="p-3">
-          <AnimatedList delay={800}>
-            {mockDetections.map((d) => (
-              <DetectionItem key={d.id} item={d} />
-            ))}
-          </AnimatedList>
+          {items.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
+               <p className="text-xs font-mono">WAITING FOR STREAM...</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {items.map((d) => (
+                <DetectionItem key={`${d.id}-${d.timestamp}`} item={d} />
+              ))}
+            </div>
+          )}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   )
 }

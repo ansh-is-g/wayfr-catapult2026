@@ -3,8 +3,14 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { Navbar } from "@/components/nav/Navbar"
 import { World3DViewer, type Object3D } from "@/components/scene/World3DViewer"
+import { DetectionFeed, type Detection as FeedDetection } from "@/components/dashboard/DetectionFeed"
+import { NearbyHazards } from "@/components/dashboard/NearbyHazards"
+import { SessionCard } from "@/components/dashboard/SessionCard"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Download, Mic, MicOff, Info, AlertTriangle, RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getSessionId, makeShareUrl } from "@/lib/session"
 
@@ -32,6 +38,7 @@ export default function DashboardPage() {
 
   const [scene, setScene] = useState<Object3D[]>(IDLE_SCENE)
   const [detections, setDetections] = useState<Detection[]>([])
+  const [hazards, setHazards] = useState<any[]>([])
   const [narration, setNarration] = useState<string | null>(null)
   const [frameCount, setFrameCount] = useState(0)
   const [sessionSecs, setSessionSecs] = useState(0)
@@ -41,11 +48,19 @@ export default function DashboardPage() {
   const [wsStatus, setWsStatus] = useState<"disconnected" | "connecting" | "connected">("disconnected")
   const [liveMode, setLiveMode] = useState(false)
   const [selectedObj, setSelectedObj] = useState<number | null>(null)
+  const [availableSessions, setAvailableSessions] = useState<string[]>([])
+  const [isRecording, setIsRecording] = useState(false)
+  const [gps, setGps] = useState<{ lat: number; lng: number } | null>(null)
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const reconnectTimeoutRef = useRef<any | null>(null)
+  const reconnectAttemptsRef = useRef(0)
 
   useEffect(() => {
     const id = getSessionId()
     setSessionId(id)
     setCaptureUrl(makeShareUrl(id))
+    fetchActiveSessions()
 
     // Check for scan results in localStorage
     const scanData = localStorage.getItem(`wayfr_scan_${id}`)
@@ -56,30 +71,48 @@ export default function DashboardPage() {
           setScene(parsed.objects)
           setLiveMode(true)
           setFrameCount(parsed.stats?.total_frames ?? 0)
-          parsed.objects.forEach((obj: { label: string; urgency: string; distance_m: number; direction: string }) => {
-            setDetections((prev) =>
-              [
-                {
-                  id: Date.now() + Math.random(),
-                  ts: "scan",
-                  label: obj.label,
-                  urgency: (obj.urgency === "high" ? "high" : obj.urgency === "medium" ? "medium" : "low") as "high" | "medium" | "low",
-                  distance: `${obj.distance_m}m`,
-                  direction: obj.direction,
-                },
-                ...prev,
-              ].slice(0, 30),
-            )
-          })
         }
       } catch {}
     }
   }, [])
 
+  const fetchActiveSessions = async () => {
+    try {
+      const res = await fetch(`${WS_URL.replace("ws", "http")}/sessions/active`)
+      const data = await res.json()
+      setAvailableSessions(data.sessions || [])
+    } catch {}
+  }
+
+  const fetchNearbyHazards = async (lat: number, lng: number) => {
+    try {
+      const res = await fetch(`${WS_URL.replace("ws", "http")}/hazards/nearby?lat=${lat}&lng=${lng}`)
+      const data = await res.json()
+      setHazards(data.hazards || [])
+    } catch {}
+  }
+
   // Session timer
   useEffect(() => {
     const t = setInterval(() => setSessionSecs((s) => s + 1), 1000)
     return () => clearInterval(t)
+  }, [])
+
+  // ── Notification sounds ──────────────────────────────────────────────────
+  const playNotification = useCallback((urgency: string) => {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = urgency === "high" ? "sawtooth" : "sine"
+      osc.frequency.setValueAtTime(urgency === "high" ? 440 : 880, ctx.currentTime)
+      gain.gain.setValueAtTime(0.1, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start()
+      osc.stop(ctx.currentTime + 0.2)
+    } catch {}
   }, [])
 
   // ── Audio queue ───────────────────────────────────────────────────────────
@@ -110,15 +143,29 @@ export default function DashboardPage() {
   }, [])
 
   // ── WebSocket connection ──────────────────────────────────────────────────
-  useEffect(() => {
+  const connectWs = useCallback(() => {
     if (!sessionId) return
+    if (wsRef.current?.readyState === WebSocket.OPEN) return
+
     setWsStatus("connecting")
     const ws = new WebSocket(`${WS_URL}/ws/${sessionId}`)
     wsRef.current = ws
 
-    ws.onopen = () => setWsStatus("connected")
-    ws.onclose = () => setWsStatus("disconnected")
-    ws.onerror = () => setWsStatus("disconnected")
+    ws.onopen = () => {
+      setWsStatus("connected")
+      reconnectAttemptsRef.current = 0
+    }
+
+    ws.onclose = () => {
+      setWsStatus("disconnected")
+      const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000)
+      reconnectAttemptsRef.current++
+      reconnectTimeoutRef.current = setTimeout(connectWs, delay)
+    }
+
+    ws.onerror = () => {
+      ws.close()
+    }
 
     ws.onmessage = (e) => {
       try {
@@ -127,8 +174,7 @@ export default function DashboardPage() {
         if (msg.type === "audio") {
           setNarration(msg.text)
           setLiveMode(true)
-          setFrameCount((n) => n + 1)
-          // Queue audio for playback
+          setFrameCount((n: number) => n + 1)
           if (msg.data) {
             audioQueueRef.current.push(msg.data)
             drainAudioQueue()
@@ -136,23 +182,21 @@ export default function DashboardPage() {
         }
 
         if (msg.type === "detections") {
-          const objs: Object3D[] = (msg.objects || []).map(
-            (o: { label: string; x: number; y: number; z: number; urgency: string; confidence: number }) => ({
-              label: o.label,
-              x: o.x || 0,
-              y: 0,
-              z: o.z || 1.5,
-              urgency: o.urgency === "high" ? "high" : o.urgency === "medium" ? "medium" : "low",
-              confidence: o.confidence,
-            }),
-          )
+          const objs: Object3D[] = (msg.objects || []).map((o: any) => ({
+            label: o.label,
+            x: o.x || 0,
+            y: 0,
+            z: o.z || 1.5,
+            urgency: o.urgency,
+            confidence: o.confidence,
+          }))
           if (objs.length > 0) {
             setScene(objs)
             setLiveMode(true)
-            setFrameCount((n) => n + 1)
-            // Add to detection log
+            setFrameCount((n: number) => n + 1)
             objs.forEach((obj: Object3D) => {
-              setDetections((prev) =>
+              if (obj.urgency === "high") playNotification("high")
+              setDetections((prev: Detection[]) =>
                 [
                   {
                     id: Date.now() + Math.random(),
@@ -163,42 +207,84 @@ export default function DashboardPage() {
                     direction: obj.x < -0.5 ? "left" : obj.x > 0.5 ? "right" : "ahead",
                   },
                   ...prev,
-                ].slice(0, 30),
+                ].slice(0, 50),
               )
             })
           }
         }
 
         if (msg.type === "hazard_alert") {
+          setLiveMode(true)
+          playNotification("high")
           const h = msg.hazard
-          setDetections((prev) =>
-            [
-              {
-                id: Date.now(),
-                ts: nowTs(),
-                label: `\u26A0 ${h.type}`,
-                urgency: (h.severity === "critical" || h.severity === "high" ? "high" : "medium") as "high" | "medium",
-                distance: `${h.distance_m}m`,
-                direction: h.direction,
-              },
-              ...prev,
-            ].slice(0, 30),
-          )
+          setDetections((prev: Detection[]) => [
+            {
+              id: Date.now(),
+              ts: nowTs(),
+              label: `\u26A0 ${h.type}`,
+              urgency: "high",
+              distance: `${h.distance_m}m`,
+              direction: h.direction,
+            },
+            ...prev,
+          ])
+        }
+
+        if (msg.gps) {
+          setGps(msg.gps)
+          fetchNearbyHazards(msg.gps.lat, msg.gps.lng)
         }
       } catch {}
     }
+  }, [sessionId, drainAudioQueue, playNotification])
 
-    const ping = setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "ping", timestamp: Date.now() }))
-      }
-    }, 20000)
-
+  useEffect(() => {
+    connectWs()
     return () => {
-      clearInterval(ping)
-      ws.close()
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current)
+      wsRef.current?.close()
     }
-  }, [sessionId, drainAudioQueue])
+  }, [connectWs])
+
+  // ── Voice messaging ───────────────────────────────────────────────────────
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const recorder = new MediaRecorder(stream)
+      mediaRecorderRef.current = recorder
+      const chunks: Blob[] = []
+
+      recorder.ondataavailable = (e) => chunks.push(e.data)
+      recorder.onstop = async () => {
+        const blob = new Blob(chunks, { type: "audio/webm" })
+        const reader = new FileReader()
+        reader.readAsDataURL(blob)
+        reader.onloadend = () => {
+          const base64 = (reader.result as string).split(",")[1]
+          wsRef.current?.send(JSON.stringify({ type: "caregiver_voice", data: base64 }))
+        }
+        stream.getTracks().forEach((t) => t.stop())
+      }
+
+      recorder.start()
+      setIsRecording(true)
+    } catch {}
+  }
+
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop()
+    setIsRecording(false)
+  }
+
+  const exportLog = () => {
+    const data = JSON.stringify(detections, null, 2)
+    const blob = new Blob([data], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `wayfr-session-${sessionId}-${Date.now()}.json`
+    a.click()
+  }
 
   const sessionTime = `${String(Math.floor(sessionSecs / 60)).padStart(2, "0")}:${String(sessionSecs % 60).padStart(2, "0")}`
 
@@ -210,136 +296,214 @@ export default function DashboardPage() {
 
   const wsColor = wsStatus === "connected" ? "bg-green-400" : wsStatus === "connecting" ? "bg-mango animate-pulse" : "bg-muted-foreground"
 
+  const selectedObjectData = selectedObj !== null ? scene[selectedObj] : null
+
   return (
     <main className="min-h-screen bg-background">
       <Navbar />
 
-      <div className="mx-auto max-w-6xl px-4 pt-20 pb-12">
-        {/* Header */}
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <p className="text-xs text-muted-foreground font-mono uppercase tracking-widest">Caregiver dashboard</p>
-            <h1 className="mt-0.5 text-xl font-bold">Live session</h1>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 text-xs font-mono text-muted-foreground">
-              <span className="relative flex h-2 w-2">
-                <span className={cn("absolute inline-flex h-full w-full rounded-full opacity-60", wsStatus === "connected" && "animate-ping", wsColor)} />
-                <span className={cn("relative inline-flex h-2 w-2 rounded-full", wsColor)} />
-              </span>
-              {wsStatus} &middot; {sessionTime}
-            </div>
-            <Badge variant="outline" className="font-mono text-xs border-mango/30 text-mango">
-              frame #{frameCount}
-            </Badge>
-          </div>
-        </div>
-
-        {/* Session link bar */}
-        {sessionId && (
-          <div className="mb-4 flex items-center gap-3 rounded-2xl border border-mango/15 bg-card/60 backdrop-blur-xl px-4 py-2.5">
-            <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground shrink-0">Session</span>
-            <span className="font-mono text-sm font-bold text-mango tracking-widest shrink-0">{sessionId}</span>
-            <span className="text-[10px] font-mono text-muted-foreground flex-1 truncate hidden sm:block">{captureUrl}</span>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={copyCapture}
-              className="text-[10px] font-mono border-mango/30 hover:border-mango/60 shrink-0 h-7 px-3"
-            >
-              {copied ? "Copied!" : "Copy capture link"}
-            </Button>
-          </div>
-        )}
-
-        {/* 3D viewer */}
-        <div className="rounded-2xl border border-mango/15 bg-card/60 backdrop-blur-xl overflow-hidden">
-          <div className="border-b border-border/40 px-4 py-2.5 flex items-center justify-between">
-            <span className="text-xs font-mono text-muted-foreground">3D SPATIAL MAP — environment reconstruction</span>
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-[10px] font-mono border-mango/30 text-mango">
-                {scene.filter((o) => o.label !== "waiting\u2026").length} objects
-              </Badge>
-              {!liveMode && (
-                <Badge variant="outline" className="text-[10px] font-mono border-border text-muted-foreground">
-                  waiting for capture
-                </Badge>
-              )}
-            </div>
-          </div>
-          <div className="p-3">
-            <World3DViewer objects={scene} autoOrbit onObjectClick={setSelectedObj} />
-          </div>
-        </div>
-
-        {/* Bottom row */}
-        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-          {/* Narration */}
-          <div className="rounded-2xl border border-border/40 bg-card/60 backdrop-blur-xl p-4">
-            <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">Current narration</p>
-            <p className="text-sm font-medium leading-relaxed text-foreground min-h-[2.5rem]">
-              {narration ? `\u201C${narration}\u201D` : <span className="text-muted-foreground italic">Waiting for live audio\u2026</span>}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              <Badge variant="outline" className="text-[10px] font-mono border-mango/30 text-mango">
-                llama4
-              </Badge>
-              <Badge variant="outline" className="text-[10px] font-mono border-border text-muted-foreground">
-                Cartesia Elaine
-              </Badge>
-              <Badge variant="outline" className="text-[10px] font-mono border-border text-muted-foreground">
-                &rarr; speakers
-              </Badge>
-            </div>
-
-            <div className="mt-3 pt-3 border-t border-border">
-              <p className="text-[10px] font-mono text-muted-foreground mb-1.5">DETECTED</p>
-              <div className="flex flex-wrap gap-1.5 min-h-[1.5rem]">
-                {scene
-                  .filter((o) => o.label !== "waiting\u2026")
-                  .map((obj, i) => (
-                    <span
-                      key={i}
-                      className={cn(
-                        "rounded-full px-2 py-0.5 text-[10px] font-mono border",
-                        obj.urgency === "high"
-                          ? "border-red-500/40 bg-red-500/10 text-red-400"
-                          : obj.urgency === "medium"
-                            ? "border-mango/40 bg-mango/10 text-mango"
-                            : "border-green-500/40 bg-green-500/10 text-green-400",
-                      )}
-                    >
-                      {obj.label} &middot; {Math.sqrt(obj.x ** 2 + obj.z ** 2).toFixed(1)}m
-                    </span>
+      <div className="mx-auto max-w-7xl px-4 pt-20 pb-12">
+        {/* Top Header & Session Picker */}
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-border pb-6">
+          <div className="flex-1 min-w-[300px]">
+            <p className="text-xs text-muted-foreground font-mono uppercase tracking-widest">Active Surveillance</p>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight">Caregiver Dashboard</h1>
+            <div className="mt-4 flex items-center gap-4">
+              <Select value={sessionId} onValueChange={(val) => val && setSessionId(val)}>
+                <SelectTrigger className="w-64 border-mango/20 bg-card font-mono text-xs">
+                  <SelectValue placeholder="Switch session..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableSessions.map((s) => (
+                    <SelectItem key={s} value={s} className="font-mono text-xs">
+                      {s} {s === getSessionId() && "(Current)"}
+                    </SelectItem>
                   ))}
-                {scene.every((o) => o.label === "waiting\u2026") && <span className="text-[10px] font-mono text-muted-foreground">&mdash;</span>}
+                  {availableSessions.length === 0 && (
+                    <SelectItem value={sessionId} disabled className="font-mono text-xs italic">
+                      No other active sessions
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+              <Button size="icon" variant="ghost" onClick={fetchActiveSessions} className="h-9 w-9 text-muted-foreground hover:text-mango">
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <div className="flex flex-col items-end">
+              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Connection</span>
+              <div className="flex items-center gap-1.5 text-xs font-mono">
+                <span className={cn("h-2 w-2 rounded-full", wsColor)} />
+                {wsStatus} &middot; {sessionTime}
               </div>
             </div>
+            <div className="h-10 w-[1px] bg-border mx-2 hidden sm:block" />
+            <Button size="sm" onClick={exportLog} className="bg-card border border-border text-foreground hover:bg-muted font-mono text-[10px] h-9">
+              <Download className="mr-2 h-3.5 w-3.5" />
+              EXPORT LOG
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          {/* Main Content Area */}
+          <div className="lg:col-span-8 space-y-6">
+            <SessionCard
+              name={`Session ${sessionId}`}
+              status={wsStatus === "connected" ? "active" : "paused"}
+              speedMph={frameCount > 0 ? 2.4 : 0}
+              lastSeen={nowTs()}
+              nearbyHazards={hazards.length}
+              lastDetection={detections[0]?.label || "Initializing..."}
+            />
+
+            <div className="rounded-xl border border-mango/15 bg-card overflow-hidden">
+              <div className="border-b border-border px-4 py-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="h-5 rounded-sm border-mango/20 bg-mango/5 text-mango text-[10px] font-bold px-1.5 uppercase tracking-tighter">LIVE 3D</Badge>
+                  <span className="text-xs font-semibold">Environment Reconstruction</span>
+                </div>
+                <Badge variant="outline" className="text-[10px] font-mono border-border text-muted-foreground">
+                   {scene.filter((o: Object3D) => o.label !== "waiting\u2026").length} objects in viewport
+                </Badge>
+              </div>
+              <div className="p-2 relative group">
+                <World3DViewer objects={scene} autoOrbit onObjectClick={setSelectedObj} />
+                
+                {/* Object Detail Panel Overlay */}
+                {selectedObjectData && (
+                  <Card className="absolute right-6 top-6 w-56 border-mango/30 bg-background/90 backdrop-blur shadow-2xl p-4 animate-in fade-in slide-in-from-right-4">
+                    <div className="flex items-center justify-between mb-3 border-b border-border pb-2">
+                       <h4 className="text-xs font-bold uppercase text-muted-foreground tracking-widest">Object Details</h4>
+                       <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => setSelectedObj(null)}>&times;</Button>
+                    </div>
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-[10px] text-muted-foreground uppercase font-mono tracking-tighter">Classification</p>
+                        <p className="text-sm font-bold text-foreground">{selectedObjectData.label}</p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <p className="text-[10px] text-muted-foreground uppercase font-mono tracking-tighter">Distance</p>
+                          <p className="text-xs font-mono font-bold text-mango">{Math.sqrt(selectedObjectData.x**2 + selectedObjectData.z**2).toFixed(2)}m</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-muted-foreground uppercase font-mono tracking-tighter">Urgency</p>
+                          <Badge variant="outline" className={cn("text-[9px] h-4 uppercase px-1 font-bold", 
+                            selectedObjectData.urgency === "high" ? "border-red-500/30 text-red-400 bg-red-400/5" : "border-mango/20 text-mango")}>
+                            {selectedObjectData.urgency}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="pt-2 border-t border-border">
+                         <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono italic">
+                           <Info className="h-3 w-3" />
+                           Tap mapping to highlight
+                         </div>
+                      </div>
+                    </div>
+                  </Card>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+               <NearbyHazards items={hazards.map((h: any) => ({
+                 id: h.id,
+                 type: h.label,
+                 severity: h.severity,
+                 distanceM: h.distance_m,
+                 direction: h.direction,
+                 description: h.description,
+                 verifiedCount: h.verified_count
+               }))} />
+               
+               <Card className="border-border bg-card p-5 flex flex-col justify-between">
+                 <div>
+                   <h3 className="text-sm font-semibold">Communicate with user</h3>
+                   <p className="mt-1 text-xs text-muted-foreground">Press and hold to send a direct voice message to the user's mobile device.</p>
+                 </div>
+                 
+                 <div className="mt-8 flex flex-col items-center gap-4">
+                    <Button 
+                      size="lg"
+                      className={cn(
+                        "h-20 w-20 rounded-full transition-all duration-300",
+                        isRecording ? "bg-red-500 hover:bg-red-600 scale-110 shadow-[0_0_20px_rgba(239,68,68,0.5)]" : "bg-mango hover:bg-mango/90"
+                      )}
+                      onMouseDown={startRecording}
+                      onMouseUp={stopRecording}
+                      onMouseLeave={isRecording ? stopRecording : undefined}
+                    >
+                      {isRecording ? <MicOff className="h-8 w-8 text-white" animate-pulse /> : <Mic className="h-8 w-8 text-white" />}
+                    </Button>
+                    <span className={cn("text-[10px] font-mono uppercase tracking-widest", isRecording ? "text-red-400 animate-pulse" : "text-muted-foreground")}>
+                      {isRecording ? "Transmitting audio..." : "Hold to talk"}
+                    </span>
+                 </div>
+                 
+                 <div className="mt-6 rounded-lg border border-border bg-background/50 p-3 italic text-[11px] text-muted-foreground">
+                   &ldquo;Watch out for the construction barrier on your left.&rdquo;
+                 </div>
+               </Card>
+            </div>
           </div>
 
-          {/* Detection log */}
-          <div className="rounded-2xl border border-border/40 bg-card/60 backdrop-blur-xl overflow-hidden">
-            <div className="border-b border-border/40 px-4 py-2.5">
-              <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Detection log</span>
-            </div>
-            <div className="h-52 overflow-y-auto">
-              {detections.length === 0 ? (
-                <p className="p-4 text-xs text-muted-foreground font-mono">Waiting for detections&hellip;</p>
-              ) : (
-                detections.map((d) => (
-                  <div key={d.id} className="flex items-center gap-3 border-b border-border/50 px-4 py-2.5">
-                    <span className="text-[10px] font-mono text-muted-foreground/50 shrink-0 w-16">{d.ts}</span>
-                    <span
-                      className={cn("h-1.5 w-1.5 rounded-full shrink-0", d.urgency === "high" ? "bg-red-400" : d.urgency === "medium" ? "bg-mango" : "bg-green-400")}
-                    />
-                    <span className="text-xs font-mono text-foreground/80 flex-1">{d.label}</span>
-                    <span className="text-[10px] font-mono text-muted-foreground shrink-0">
-                      {d.distance} {d.direction}
-                    </span>
+          {/* Sidebars */}
+          <div className="lg:col-span-4 space-y-6">
+            <DetectionFeed items={detections.map((d: Detection) => ({
+              id: d.id.toString(),
+              timestamp: d.ts,
+              type: d.label.includes("Hazard") ? "hazard_alert" : "obstacle",
+              content: `${d.label} at ${d.distance} ${d.direction}`,
+              urgency: d.urgency === "high" ? "urgent" : d.urgency === "medium" ? "normal" : "low"
+            }))} />
+
+            <Card className="border-border bg-card overflow-hidden">
+               <div className="border-b border-border px-4 py-3 bg-muted/30">
+                  <h4 className="text-xs font-bold uppercase tracking-widest">Real-time Narration</h4>
+               </div>
+               <div className="p-4 space-y-4">
+                  <div className="min-h-[60px] text-sm leading-relaxed font-medium">
+                    {narration ? (
+                      <span className="text-foreground italic">&ldquo;{narration}&rdquo;</span>
+                    ) : (
+                      <span className="text-muted-foreground italic">Waiting for AI narrator...</span>
+                    )}
                   </div>
-                ))
-              )}
-            </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <Badge variant="outline" className="text-[9px] font-mono border-mango/20 bg-mango/5 text-mango">LLAMA-4-CAREGIVER</Badge>
+                    <Badge variant="outline" className="text-[9px] font-mono border-border bg-background/50">CARTESIA-ELAINE-V2</Badge>
+                  </div>
+               </div>
+            </Card>
+
+            <Card className="border-border bg-card p-4">
+              <div className="flex items-center gap-2 text-destructive mb-3">
+                 <AlertTriangle className="h-4 w-4" />
+                 <h4 className="text-[10px] font-bold uppercase tracking-widest">System Alerts</h4>
+              </div>
+              <div className="space-y-2">
+                 {wsStatus === "disconnected" && (
+                   <div className="text-[11px] text-destructive bg-destructive/10 border border-destructive/20 rounded px-2 py-1.5 font-medium">
+                     CRITICAL: Survelliance connection lost. Reconnecting...
+                   </div>
+                 )}
+                 {hazards.length > 0 && (
+                   <div className="text-[11px] text-orange-500 bg-orange-500/10 border border-orange-500/20 rounded px-2 py-1.5 font-medium">
+                     WARNING: {hazards.length} hazards verified nearby.
+                   </div>
+                 )}
+                 {wsStatus === "connected" && hazards.length === 0 && (
+                   <div className="text-[11px] text-green-500 bg-green-500/10 border border-orange-500/20 rounded px-2 py-1.5 font-medium">
+                     System active. Environment safe.
+                   </div>
+                 )}
+              </div>
+            </Card>
           </div>
         </div>
       </div>
