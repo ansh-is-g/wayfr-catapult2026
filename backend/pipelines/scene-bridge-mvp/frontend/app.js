@@ -17,6 +17,7 @@ const objectList = document.getElementById("objectList");
 const objectCount = document.getElementById("objectCount");
 const viewerSection = document.getElementById("viewerSection");
 const viewerIframe = document.getElementById("viewerIframe");
+const viewerOpenLink = document.getElementById("viewerOpenLink");
 
 let reconJobs = [];
 let annotatorJobs = [];
@@ -24,29 +25,11 @@ let currentBridgeId = null;
 let pollTimer = null;
 let selectedTrackId = null;
 
-function generateColors(n) {
-  const colors = [];
-  for (let i = 0; i < n; i++) {
-    const hue = i / Math.max(n, 1);
-    const h = hue * 6.0;
-    const c = 0.9 * 0.8;
-    const x = c * (1 - Math.abs((h % 2) - 1));
-    const m = 0.9 - c;
-    let r, g, b;
-    if (h < 1) { r = c; g = x; b = 0; }
-    else if (h < 2) { r = x; g = c; b = 0; }
-    else if (h < 3) { r = 0; g = c; b = x; }
-    else if (h < 4) { r = 0; g = x; b = c; }
-    else if (h < 5) { r = x; g = 0; b = c; }
-    else { r = c; g = 0; b = x; }
-    colors.push([
-      Math.round((r + m) * 255),
-      Math.round((g + m) * 255),
-      Math.round((b + m) * 255),
-    ]);
-  }
-  return colors;
-}
+const MARKER_COLORS = [
+  [255, 80, 80], [80, 200, 80], [80, 120, 255], [255, 200, 50],
+  [200, 80, 255], [50, 220, 220], [255, 140, 50], [255, 100, 200],
+  [120, 255, 120], [255, 80, 180], [80, 255, 200], [200, 200, 80],
+];
 
 function formatJob(job, type) {
   const m = job.metadata || {};
@@ -151,6 +134,7 @@ function updateStatus(data) {
     progressContainer.style.display = "none";
     renderObjects(data.objects || []);
     viewerSection.style.display = "flex";
+    viewerOpenLink.href = VISER_URL;
     if (viewerIframe.src === "about:blank" || !viewerIframe.src) {
       viewerIframe.src = VISER_URL;
     }
@@ -191,22 +175,24 @@ function renderObjects(objects) {
     return;
   }
 
-  const colors = generateColors(objects.length);
-
   objects.forEach((obj, i) => {
     const item = document.createElement("div");
     item.className = "object-item";
     item.dataset.trackId = obj.track_id;
 
-    const [cr, cg, cb] = colors[i];
+    const [cr, cg, cb] = MARKER_COLORS[i % MARKER_COLORS.length];
+    const c3d = obj.centroid_3d;
+    const pos = c3d ? `(${c3d[0].toFixed(2)}, ${c3d[1].toFixed(2)}, ${c3d[2].toFixed(2)})` : "";
+
     item.innerHTML = `
       <div class="obj-label">
         <span class="color-dot" style="background:rgb(${cr},${cg},${cb})"></span>
         ${obj.label}
       </div>
       <div class="obj-meta">
-        ${obj.n_points.toLocaleString()} pts &middot; ${obj.n_observations} frames &middot; conf ${(obj.confidence * 100).toFixed(0)}%
+        ${obj.n_points.toLocaleString()} pts &middot; ${obj.n_observations} views &middot; conf ${(obj.confidence * 100).toFixed(0)}%
       </div>
+      <div class="obj-pos">${pos}</div>
     `;
 
     item.addEventListener("click", () => selectObject(obj.track_id, item));

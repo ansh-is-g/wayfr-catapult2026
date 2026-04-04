@@ -1,7 +1,7 @@
 """
 Build hloc reference maps for all videos in data/ via Modal.
 
-Usage: modal run backend/pipelines/hloc_localization/backend/run_batch.py
+Usage: modal run hloc_localization/run_batch.py
 """
 
 import pathlib

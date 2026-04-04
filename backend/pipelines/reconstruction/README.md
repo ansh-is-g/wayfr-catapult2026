@@ -7,7 +7,7 @@ Supports optional auxiliary geometric inputs (camera intrinsics, poses) for impr
 ## Video to GLB
 
 ```bash
-modal run backend/pipelines/reconstruction/app.py --video-path ~/Desktop/video.mov
+modal run app.py --video-path ~/Desktop/video.mov
 ```
 
 Outputs `.glb` next to the input file.
@@ -21,10 +21,10 @@ Outputs `.glb` next to the input file.
 
 ```bash
 # High quality
-modal run backend/pipelines/reconstruction/app.py --video-path vid.mov --fps 5 --conf 20
+modal run app.py --video-path vid.mov --fps 5 --conf 20
 
 # Fast preview
-modal run backend/pipelines/reconstruction/app.py --video-path vid.mov --fps 1 --conf 40
+modal run app.py --video-path vid.mov --fps 1 --conf 40
 ```
 
 ### Batch (parallel)
@@ -32,7 +32,7 @@ modal run backend/pipelines/reconstruction/app.py --video-path vid.mov --fps 1 -
 Process multiple videos in parallel across separate A100s:
 
 ```bash
-modal run backend/pipelines/reconstruction/run_batch.py::batch --fps 5 --conf 20
+modal run run_batch.py::batch --fps 5 --conf 20
 ```
 
 Edit `VIDEOS` list in `run_batch.py` to specify which files. Outputs go to `examples/`.
@@ -43,13 +43,13 @@ MapAnything can leverage known geometric information for better results:
 
 ```bash
 # With known camera intrinsics
-modal run backend/pipelines/reconstruction/app.py --video-path vid.mov --intrinsics intrinsics.json
+modal run app.py --video-path vid.mov --intrinsics intrinsics.json
 
 # With known camera poses (e.g. from IMU/GPS)
-modal run backend/pipelines/reconstruction/app.py --video-path vid.mov --poses poses.json
+modal run app.py --video-path vid.mov --poses poses.json
 
 # Both
-modal run backend/pipelines/reconstruction/app.py --video-path vid.mov --intrinsics intrinsics.json --poses poses.json
+modal run app.py --video-path vid.mov --intrinsics intrinsics.json --poses poses.json
 ```
 
 **intrinsics.json** — 3x3 camera intrinsics matrix:

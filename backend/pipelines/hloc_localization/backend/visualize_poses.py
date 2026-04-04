@@ -5,9 +5,9 @@ Extracts frames from a query video, localizes them against a reference,
 and renders the trajectory as an interactive 3D plot.
 
 Usage:
-  PYTHONPATH=backend/pipelines python -m hloc_localization.backend.visualize_poses \
+  python -m hloc_localization.backend.visualize_poses \
     --video data/IMG_4730.MOV \
-    --reference backend/pipelines/hloc_localization/data/hloc_reference/IMG_4720/reference.tar.gz \
+    --reference hloc_localization/data/hloc_reference/IMG_4720/reference.tar.gz \
     --fps 2
 """
 

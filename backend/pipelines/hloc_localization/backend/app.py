@@ -3,9 +3,9 @@ hloc-based visual localization on Modal — SuperPoint + LightGlue + PnP.
 
 Builds a reference SfM model from video, then localizes query frames against it.
 
-Deploy:  modal deploy backend/pipelines/hloc_localization/backend/app.py
-Dev:     modal serve backend/pipelines/hloc_localization/backend/app.py
-Build:   modal run backend/pipelines/hloc_localization/backend/app.py --video-path data/IMG_4717.MOV
+Deploy:  modal deploy hloc_localization/backend/app.py
+Dev:     modal serve hloc_localization/backend/app.py
+Build:   modal run hloc_localization/backend/app.py --video-path data/IMG_4717.MOV
 """
 
 import pathlib
@@ -534,7 +534,7 @@ def main(video_path: str, fps: int = 3):
     """
     Build reference SfM model from a video.
 
-    Usage: modal run backend/pipelines/hloc_localization/backend/app.py --video-path data/IMG_4717.MOV
+    Usage: modal run hloc_localization/app.py --video-path data/IMG_4717.MOV
     """
     p = pathlib.Path(video_path).expanduser().resolve()
     print(f"Reading {p.name} ({p.stat().st_size / 1024 / 1024:.1f} MB)")

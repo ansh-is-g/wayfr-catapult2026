@@ -1,7 +1,7 @@
 """
 Run MapAnything on multiple videos in parallel via Modal.
 
-Usage: modal run backend/pipelines/reconstruction/run_batch.py
+Usage: modal run reconstruction/run_batch.py
 """
 
 import pathlib

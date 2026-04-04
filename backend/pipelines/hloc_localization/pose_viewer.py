@@ -6,7 +6,7 @@ the HLoc reference tar, computes ICP alignment (COLMAP→GLB), then renders
 live localized poses as camera frustums in the correct GLB coordinate frame.
 
 Usage:
-    PYTHONPATH=backend/pipelines python -m hloc_localization.pose_viewer basedir/IMG_4741.glb
+    python -m hloc_localization.pose_viewer basedir/IMG_4741.glb
 """
 
 import argparse
@@ -221,16 +221,14 @@ def main():
     ref_tar = args.reference_tar
     if ref_tar is None:
         glb_stem = Path(args.glb).stem
-        hloc_root = Path(__file__).resolve().parent
-        candidate = hloc_root / "data" / "hloc_reference" / glb_stem / "reference.tar.gz"
+        candidate = Path("hloc_localization/data/hloc_reference") / glb_stem / "reference.tar.gz"
         if candidate.exists():
             ref_tar = str(candidate)
             print(f"Auto-detected reference: {ref_tar}")
 
     if ref_tar is None:
         print("ERROR: No reference tar found. Specify --reference-tar or ensure "
-              "<hloc_localization>/data/hloc_reference/<name>/reference.tar.gz exists "
-              "(next to this package).")
+              "hloc_localization/data/hloc_reference/<name>/reference.tar.gz exists.")
         return
 
     # Load GLB point cloud

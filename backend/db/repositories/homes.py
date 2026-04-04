@@ -61,6 +61,9 @@ async def update_status(
     payload: dict[str, Any] = {"status": status, "updated_at": "now()"}
     if error is not None:
         payload["error"] = error
+    elif status == "ready":
+        # Clear a previous failure message when setup completes successfully.
+        payload["error"] = None
     if num_objects is not None:
         payload["num_objects"] = num_objects
     client.table("home_maps").update(payload).eq("id", home_id).execute()
@@ -88,6 +91,7 @@ async def upsert_objects(home_id: str, objects: list[ObjectPosition]) -> None:
     client = get_supabase()
     if client is None:
         return
+    client.table("object_positions").delete().eq("home_id", home_id).execute()
     if not objects:
         return
     rows = [

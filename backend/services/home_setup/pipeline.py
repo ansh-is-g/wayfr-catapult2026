@@ -70,31 +70,36 @@ def _load_reference_local(home_id: str) -> bytes | None:
     return None
 
 # ---------------------------------------------------------------------------
-# Supabase cloud storage (secondary / backup)
+# Supabase cloud storage
 # ---------------------------------------------------------------------------
 
 async def _upload_scene_glb(home_id: str, glb_bytes: bytes) -> None:
-    """Upload reconstructed GLB to Supabase Storage (non-fatal cloud backup)."""
+    """Upload reconstructed GLB to Supabase Storage."""
     from db.client import get_supabase
 
     client = get_supabase()
     if client is None:
-        logger.warning("supabase_not_configured_skip_glb_upload")
-        return
+        raise RuntimeError("Supabase is not configured for scene GLB upload")
     path = f"{home_id}/scene.glb"
-    try:
-        client.storage.from_(_SCENE_BUCKET).upload(
-            path,
-            glb_bytes,
-            {"content-type": "model/gltf-binary", "upsert": "true"},
-        )
-        logger.info("scene_glb_uploaded", home_id=home_id, size_mb=round(len(glb_bytes) / 1e6, 1))
-    except Exception as exc:
-        logger.warning("scene_glb_cloud_upload_failed", home_id=home_id, error=str(exc))
+    client.storage.from_(_SCENE_BUCKET).upload(
+        path,
+        glb_bytes,
+        {"content-type": "model/gltf-binary", "upsert": "true"},
+    )
+    logger.info("scene_glb_uploaded", home_id=home_id, size_mb=round(len(glb_bytes) / 1e6, 1))
 
 
 async def _download_scene_glb(home_id: str) -> bytes | None:
-    """Try Supabase first, fall back to local disk."""
+    """Serve the scene GLB from local disk.
+
+    The main home setup flow intentionally keeps scene GLBs local-only so large
+    files do not fail against Supabase Storage size limits.
+    """
+    local = _load_scene_glb_local(home_id)
+    if local is not None:
+        logger.info("scene_glb_served_from_local", home_id=home_id)
+        return local
+
     from db.client import get_supabase
 
     client = get_supabase()
@@ -107,10 +112,7 @@ async def _download_scene_glb(home_id: str) -> bytes | None:
         except Exception as exc:
             logger.warning("scene_glb_cloud_download_failed", home_id=home_id, error=str(exc))
 
-    local = _load_scene_glb_local(home_id)
-    if local is not None:
-        logger.info("scene_glb_served_from_local", home_id=home_id)
-    return local
+    return None
 
 
 async def _upload_reference(home_id: str, tar_bytes: bytes) -> None:
@@ -204,14 +206,9 @@ async def run_home_setup(home_id: str, video_bytes: bytes) -> None:
         )
         logger.info("bridge_complete", home_id=home_id, n_objects=len(objects))
 
-        # Phase 2b: persist GLB — local disk is the required gate
+        # Phase 2b: persist GLB locally only. Scene files are too large for the
+        # current Supabase Storage quota/limits on the free tier.
         _save_scene_glb_local(home_id, recon_result["glb"])
-
-        # Cloud backup (non-fatal)
-        try:
-            await _upload_scene_glb(home_id, recon_result["glb"])
-        except Exception as exc:
-            logger.warning("scene_glb_cloud_upload_failed", home_id=home_id, error=str(exc))
 
         # Phase 3: build HLoc reference (sequential — needs video)
         try:

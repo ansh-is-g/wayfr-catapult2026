@@ -2,7 +2,7 @@
 Benchmark DPVO per-frame timing (pure odometry, no HLoc anchoring).
 
 Usage:
-  modal run backend/pipelines/hloc_localization/backend/benchmark_dpvo.py \
+  modal run hloc_localization/backend/benchmark_dpvo.py \
     --video data/IMG_4724.mov \
     --fps 15 --max-frames 100
 """
@@ -263,7 +263,7 @@ def main(
     Benchmark DPVO per-frame timing.
 
     Usage:
-      modal run backend/pipelines/hloc_localization/backend/benchmark_dpvo.py \
+      modal run hloc_localization/backend/benchmark_dpvo.py \
         --video data/IMG_4724.mov --fps 15
     """
     video_path = pathlib.Path(video).expanduser().resolve()

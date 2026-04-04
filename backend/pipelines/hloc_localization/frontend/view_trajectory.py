@@ -6,7 +6,7 @@ computes a similarity transform to align COLMAP→GLB coordinate systems,
 then overlays aligned camera frustums on the GLB point cloud.
 
 Usage:
-  PYTHONPATH=backend/pipelines python -m hloc_localization.frontend.view_trajectory
+  python -m hloc_localization.frontend.view_trajectory
 """
 
 import io
@@ -185,11 +185,9 @@ def pose_to_world(p):
 
 
 def main():
-    # hloc_localization/frontend/this_file -> repo root is five levels up
-    hloc_root = pathlib.Path(__file__).resolve().parent.parent
-    repo_root = pathlib.Path(__file__).resolve().parent.parent.parent.parent.parent
-    glb_path = repo_root / "data" / "reconstruction" / "IMG_4720.glb"
-    ref_tar_path = hloc_root / "data" / "hloc_reference" / "IMG_4720" / "reference.tar.gz"
+    base = pathlib.Path(__file__).parent.parent.parent
+    glb_path = base / "data" / "reconstruction" / "IMG_4720.glb"
+    ref_tar_path = base / "hloc_localization" / "data" / "hloc_reference" / "IMG_4720" / "reference.tar.gz"
 
     # Load GLB point cloud
     print(f"Loading GLB: {glb_path.name} ({glb_path.stat().st_size / 1024 / 1024:.0f} MB)")

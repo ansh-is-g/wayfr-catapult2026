@@ -5,7 +5,7 @@ Upload a video, reconstruct a 3D point cloud using [MapAnything](https://github.
 ## Architecture
 
 ```
-backend/pipelines/scene-reconstructor-mvp/
+scene-reconstructor-mvp/
 ├── modal_app.py          # MapAnything pipeline on Modal (A100-80GB)
 ├── backend/
 │   ├── main.py           # FastAPI (port 8101) + Viser (port 8081)
@@ -33,13 +33,13 @@ modal setup  # one-time auth
 Create your local environment file and add credentials:
 
 ```bash
-cp backend/pipelines/scene-reconstructor-mvp/.env.example backend/pipelines/scene-reconstructor-mvp/.env
+cp scene-reconstructor-mvp/.env.example scene-reconstructor-mvp/.env
 ```
 
 ### 2. Deploy the Modal app
 
 ```bash
-modal deploy backend/pipelines/scene-reconstructor-mvp/modal_app.py
+modal deploy scene-reconstructor-mvp/modal_app.py
 ```
 
 This builds the GPU container image (MapAnything + PyTorch on A100-80GB) and deploys the `reconstruct_scene` function.
@@ -47,7 +47,7 @@ This builds the GPU container image (MapAnything + PyTorch on A100-80GB) and dep
 ### 3. Install backend dependencies
 
 ```bash
-cd backend/pipelines/scene-reconstructor-mvp/backend
+cd scene-reconstructor-mvp/backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
@@ -55,7 +55,7 @@ pip install -r requirements.txt
 ### 4. Start the backend
 
 ```bash
-cd backend/pipelines/scene-reconstructor-mvp/backend
+cd scene-reconstructor-mvp/backend
 python main.py
 ```
 
@@ -66,7 +66,7 @@ This starts:
 ### 5. Start the frontend
 
 ```bash
-cd backend/pipelines/scene-reconstructor-mvp/frontend
+cd scene-reconstructor-mvp/frontend
 python -m http.server 5176
 ```
 
@@ -111,7 +111,7 @@ High quality:  FPS=5, Conf%=20
 Run reconstruction without the web UI:
 
 ```bash
-modal run backend/pipelines/scene-reconstructor-mvp/modal_app.py \
+modal run scene-reconstructor-mvp/modal_app.py \
   --video-path ~/Desktop/video.MOV \
   --fps 3 --conf 20
 ```
@@ -133,10 +133,10 @@ Security note: never commit real `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` values.
 
 ## Viewing existing GLBs
 
-Use the standalone viewer from `backend/pipelines/reconstruction/`:
+Use the standalone viewer from `reconstruction/`:
 
 ```bash
-cd backend/pipelines/reconstruction
+cd reconstruction
 pip install -r requirements.txt
 python viewer.py /path/to/scene.glb --downsample 20
 ```

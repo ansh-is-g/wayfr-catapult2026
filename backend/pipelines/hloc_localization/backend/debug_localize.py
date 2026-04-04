@@ -2,7 +2,7 @@
 Debug localization: extract frames from a video and localize each against a reference map.
 
 Usage:
-  PYTHONPATH=backend/pipelines python -m hloc_localization.backend.debug_localize \\
+  python hloc_localization/debug_localize.py \\
     --video data/IMG_4718.MOV \\
     --reference data/hloc_reference/IMG_4717/reference.tar.gz \\
     --fps 1

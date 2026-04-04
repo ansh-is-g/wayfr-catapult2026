@@ -235,6 +235,7 @@ def _job_response(job: dict[str, Any]) -> JobResponse:
         message=job.get("message", ""),
         original_url=_to_media_url(job.get("input_video_rel")),
         glb_url=_to_media_url(job.get("glb_rel")),
+        showcase_glb_url=_to_media_url(job.get("showcase_glb_rel")),
         viewer_ready=job.get("viewer_ready", False),
         metadata=job.get("metadata", {}),
         error=job.get("error"),
@@ -242,7 +243,7 @@ def _job_response(job: dict[str, Any]) -> JobResponse:
 
 
 async def _process_job_task(job_id: str, req: ProcessRequest) -> None:
-    """Background task: call Modal for reconstruction, save GLB, load into Viser."""
+    """Background task: call Modal for reconstruction, save GLB(s), load into Viser."""
     job = _read_job(job_id)
     input_rel = job["input_video_rel"]
     input_path = settings.media_root / input_rel
@@ -250,6 +251,7 @@ async def _process_job_task(job_id: str, req: ProcessRequest) -> None:
     glb_path = settings.media_root / glb_rel
 
     try:
+        # --- Stage: uploading ---
         job = _read_job(job_id)
         job["status"] = "processing"
         job["stage"] = "uploading"
@@ -259,10 +261,14 @@ async def _process_job_task(job_id: str, req: ProcessRequest) -> None:
 
         video_bytes = input_path.read_bytes()
 
+        # --- Stage: curating + reconstructing ---
         job = _read_job(job_id)
         job["stage"] = "reconstructing"
-        job["progress"] = 15
-        job["message"] = f"Running MapAnything reconstruction (fps={req.fps})..."
+        job["progress"] = 10
+        job["message"] = (
+            f"Curating frames & running MapAnything "
+            f"(fps={req.fps}, mode={req.export_mode})..."
+        )
         _write_job(job_id, job)
 
         fn = modal.Function.from_name(
@@ -270,21 +276,31 @@ async def _process_job_task(job_id: str, req: ProcessRequest) -> None:
             settings.reconstruction_function_name,
         )
         result = await asyncio.to_thread(
-            fn.remote, video_bytes, req.fps, req.conf_percentile,
+            fn.remote, video_bytes, req.fps, req.conf_percentile, req.export_mode,
         )
 
         if not isinstance(result, dict) or "glb" not in result:
             raise RuntimeError("Modal function returned unexpected format")
 
+        # --- Stage: saving ---
         job = _read_job(job_id)
         job["stage"] = "saving"
-        job["progress"] = 80
-        job["message"] = "Saving reconstruction..."
+        job["progress"] = 75
+        job["message"] = "Saving reconstruction outputs..."
         _write_job(job_id, job)
 
         glb_path.parent.mkdir(parents=True, exist_ok=True)
         glb_path.write_bytes(result["glb"])
 
+        # Save showcase GLB if present
+        showcase_glb_rel = None
+        showcase_glb = result.get("showcase_glb")
+        if showcase_glb:
+            showcase_glb_rel = f"outputs/{job_id}_showcase.glb"
+            showcase_glb_path = settings.media_root / showcase_glb_rel
+            showcase_glb_path.write_bytes(showcase_glb)
+
+        # Save scene data NPZ
         scene_data_rel = None
         scene_data = result.get("scene_data")
         if scene_data:
@@ -292,30 +308,48 @@ async def _process_job_task(job_id: str, req: ProcessRequest) -> None:
             scene_data_path = settings.media_root / scene_data_rel
             scene_data_path.write_bytes(scene_data)
 
+        # --- Stage: loading viewer ---
         job = _read_job(job_id)
         job["stage"] = "loading_viewer"
         job["progress"] = 90
         job["message"] = "Loading 3D viewer..."
         _write_job(job_id, job)
 
-        load_glb_into_viser(str(glb_path))
+        # Load the showcase GLB into viewer if available, otherwise bridge GLB
+        viewer_glb_path = str(glb_path)
+        if showcase_glb_rel:
+            viewer_glb_path = str(settings.media_root / showcase_glb_rel)
+        load_glb_into_viser(viewer_glb_path)
 
+        # --- Stage: completed ---
         done = _read_job(job_id)
         done["status"] = "completed"
         done["progress"] = 100
         done["stage"] = "completed"
         done["message"] = "Reconstruction complete."
         done["glb_rel"] = glb_rel
+        done["showcase_glb_rel"] = showcase_glb_rel
         done["viewer_ready"] = True
-        metadata = {
+
+        metadata: dict[str, Any] = {
             "num_frames": result.get("num_frames", 0),
             "num_points": result.get("num_points", 0),
             "glb_size_mb": round(len(result["glb"]) / 1024 / 1024, 1),
+            "export_mode": req.export_mode,
+            "orientation_method": result.get("orientation_method", "unknown"),
         }
+        if showcase_glb:
+            metadata["showcase_glb_size_mb"] = round(len(showcase_glb) / 1024 / 1024, 1)
+            metadata["showcase_num_points"] = result.get("showcase_num_points", 0)
         if scene_data_rel:
             metadata["scene_data_rel"] = scene_data_rel
         if result.get("source_fps"):
             metadata["source_fps"] = result["source_fps"]
+        if result.get("curation_stats"):
+            metadata["curation_stats"] = result["curation_stats"]
+        if result.get("cleanup_stats"):
+            metadata["cleanup_stats"] = result["cleanup_stats"]
+
         done["metadata"] = metadata
         _write_job(job_id, done)
 
@@ -403,6 +437,22 @@ async def download_glb(job_id: str):
         glb_path,
         media_type="model/gltf-binary",
         filename=f"{job_id}.glb",
+    )
+
+
+@app.get("/api/jobs/{job_id}/download-showcase")
+async def download_showcase_glb(job_id: str):
+    job = _read_job(job_id)
+    showcase_rel = job.get("showcase_glb_rel")
+    if not showcase_rel:
+        raise HTTPException(status_code=404, detail="Showcase GLB not available for this job")
+    showcase_path = settings.media_root / showcase_rel
+    if not showcase_path.exists():
+        raise HTTPException(status_code=404, detail="Showcase GLB file not found")
+    return FileResponse(
+        showcase_path,
+        media_type="model/gltf-binary",
+        filename=f"{job_id}_showcase.glb",
     )
 
 

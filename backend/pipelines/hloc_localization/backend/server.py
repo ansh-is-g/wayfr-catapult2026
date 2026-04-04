@@ -3,7 +3,7 @@ FastAPI server for hloc localization.
 
 Receives frames from clients, calls Modal for localization, returns 6DoF poses.
 
-Usage: PYTHONPATH=backend/pipelines python -m hloc_localization.backend.server [--port 8090]
+Usage: python hloc_localization/server.py [--port 8090]
 
 Endpoints:
   POST /reference/build   — Upload video, build reference map

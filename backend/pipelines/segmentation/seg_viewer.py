@@ -5,7 +5,7 @@ Shows source video alongside SAM2 tracking overlay and depth-masked segmentation
 Arrow keys to step, Space to play/pause, dropdown to switch videos.
 
 Usage:
-  python backend/pipelines/segmentation/seg_viewer.py data/segmentation/ --source-dir data/
+  python segmentation/seg_viewer.py data/segmentation/ --source-dir data/
 """
 
 import argparse
