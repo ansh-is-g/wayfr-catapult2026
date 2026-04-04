@@ -336,11 +336,11 @@ function ExploreCamera({
   cameraCommand: CameraCommand | null
 }) {
   const controlsRef = useRef<OrbitControlsImpl | null>(null)
-  const idleTimer = useRef(0)
   const interacting = useRef(false)
   const desiredTarget = useRef(new THREE.Vector3(0, 0.5, 3))
   const desiredPosition = useRef(new THREE.Vector3(-2.4, 3.2, -2.8))
   const appliedCommand = useRef<string>("")
+  const hasBootstrapped = useRef(false)
   const { camera } = useThree()
 
   const overview = useMemo(() => {
@@ -397,16 +397,12 @@ function ExploreCamera({
   )
 
   useEffect(() => {
+    if (hasBootstrapped.current) return
+    hasBootstrapped.current = true
     applyPreset("reset")
     camera.position.copy(desiredPosition.current)
     camera.lookAt(desiredTarget.current)
   }, [applyPreset, camera])
-
-  useEffect(() => {
-    if (focusedObject) {
-      applyPreset("focus")
-    }
-  }, [applyPreset, focusedObject])
 
   useEffect(() => {
     if (!cameraCommand) return
@@ -422,15 +418,6 @@ function ExploreCamera({
     camera.position.lerp(desiredPosition.current, 1 - Math.exp(-delta * 4.6))
     controlsRef.current.target.lerp(desiredTarget.current, 1 - Math.exp(-delta * 5.2))
     controlsRef.current.update()
-
-    if (interacting.current) {
-      idleTimer.current = 0
-      controlsRef.current.autoRotate = false
-    } else {
-      idleTimer.current += delta
-      controlsRef.current.autoRotate = !!focusedObject && idleTimer.current > 3
-      controlsRef.current.autoRotateSpeed = 0.42
-    }
   })
 
   return (
@@ -442,6 +429,7 @@ function ExploreCamera({
       maxPolarAngle={Math.PI * 0.49}
       minDistance={1.4}
       maxDistance={Math.max(overview.distance * 3.4, 8)}
+      autoRotate={false}
       onStart={() => {
         interacting.current = true
       }}

@@ -13,7 +13,6 @@ import {
   Plus,
   RefreshCw,
   Search,
-  Sparkles,
   TriangleAlert,
 } from "lucide-react"
 
@@ -579,7 +578,7 @@ export default function DashboardPage() {
 
   return (
     <main className="min-h-full bg-background">
-      <div className="mx-auto w-full max-w-[1880px] px-4 py-4 sm:px-6 lg:px-8">
+      <div className="mx-auto w-full max-w-none px-4 py-4 sm:px-6 lg:px-8">
         <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-mango/90">Scene explorer</p>
@@ -619,26 +618,8 @@ export default function DashboardPage() {
         {!homesLoading && homes.length === 0 && !homesError ? <EmptyPanel /> : null}
 
         {homes.length > 0 ? (
-          <div className="mt-6 grid gap-5 2xl:grid-cols-[320px_minmax(0,1fr)_360px]">
+          <div className="mt-6 grid gap-5">
             <aside className="space-y-4">
-              <SceneObjectBrowser
-                objects={visibleObjects}
-                query={objectQuery}
-                selectedObjectIds={selectedObjectIds}
-                focusedObjectId={focusedObjectId}
-                pinnedObjectIds={pinnedObjectIds}
-                hiddenLabels={hiddenLabels}
-                hiddenObjectIds={hiddenObjectIds}
-                onQueryChange={setObjectQuery}
-                onSelectObject={activateObject}
-                onSelectLabel={selectLabelGroup}
-                onHoverObject={setHoveredObjectId}
-                onTogglePin={togglePin}
-                onHideObject={hideObject}
-                onToggleLabelVisibility={toggleLabelVisibility}
-                onResetVisibility={resetVisibility}
-              />
-
               <div className="rounded-[28px] bg-card/52 p-4 backdrop-blur-xl">
                 <div>
                   <h3 className="text-lg font-semibold text-foreground">Scene library</h3>
@@ -780,146 +761,11 @@ export default function DashboardPage() {
 
               {activeHome?.status === "ready" ? (
                 <div className="space-y-4">
-                  <div className="rounded-[28px] border border-border/60 bg-card/38 px-4 py-4 backdrop-blur-xl">
-                    <div className="flex flex-col gap-4">
-                      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                        <div>
-                          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-mango/85">Explorer controls</p>
-                          <p className="mt-2 text-sm text-muted-foreground">
-                            Hover to preview, click to focus, use shift-click to build a group, and keep selection sticky until you clear it.
-                          </p>
-                        </div>
-
-                        <div className="flex flex-wrap gap-2">
-                          <Button variant="outline" className="rounded-full" onClick={() => createCameraCommand("reset")}>
-                            Reset view
-                          </Button>
-                          <Button variant="outline" className="rounded-full" onClick={() => createCameraCommand("top")}>
-                            Top view
-                          </Button>
-                          <Button variant="outline" className="rounded-full" onClick={() => createCameraCommand("overview")}>
-                            Overview
-                          </Button>
-                          <Button
-                            variant="outline"
-                            className="rounded-full"
-                            onClick={() => createCameraCommand("focus")}
-                            disabled={!focusedObject}
-                          >
-                            Focus selected
-                          </Button>
-                        </div>
-                      </div>
-
-                      <div className="grid gap-3 xl:grid-cols-[1.4fr_1fr_1fr]">
-                        <div>
-                          <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-                            Scene mode
-                          </p>
-                          <div className="flex flex-wrap gap-2">
-                            {DISPLAY_MODE_OPTIONS.map((option) => (
-                              <button
-                                key={option.key}
-                                type="button"
-                                onClick={() => setDisplayMode(option.key)}
-                                className={cn(
-                                  "rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] transition-colors",
-                                  displayMode === option.key
-                                    ? "border-mango/35 bg-mango/10 text-mango"
-                                    : "border-border/60 bg-background/40 text-muted-foreground"
-                                )}
-                              >
-                                {option.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div>
-                          <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-                            Color mode
-                          </p>
-                          <div className="flex flex-wrap gap-2">
-                            {COLOR_MODE_OPTIONS.map((option) => (
-                              <button
-                                key={option.key}
-                                type="button"
-                                onClick={() => setColorMode(option.key)}
-                                className={cn(
-                                  "rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] transition-colors",
-                                  colorMode === option.key
-                                    ? "border-sky-300/35 bg-sky-300/10 text-sky-100"
-                                    : "border-border/60 bg-background/40 text-muted-foreground"
-                                )}
-                              >
-                                {option.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div>
-                          <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-                            Debug views
-                          </p>
-                          <div className="flex flex-wrap gap-2">
-                            {(
-                              [
-                                ["showApproxRegion", "Approx"],
-                                ["showExactPoints", "Support"],
-                                ["showBBoxes", "BBox"],
-                                ["showCentroids", "Centroid"],
-                              ] as const
-                            ).map(([key, label]) => (
-                              <button
-                                key={key}
-                                type="button"
-                                onClick={() => toggleViewerDebug(key)}
-                                className={cn(
-                                  "rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] transition-colors",
-                                  viewerDebug[key]
-                                    ? "border-emerald-400/35 bg-emerald-400/10 text-emerald-200"
-                                    : "border-border/60 bg-background/40 text-muted-foreground"
-                                )}
-                              >
-                                {label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                        <span className="rounded-full border border-border/60 bg-background/44 px-3 py-1.5">
-                          Sticky selection with Esc to clear
-                        </span>
-                        <span className="rounded-full border border-border/60 bg-background/44 px-3 py-1.5">
-                          Shift + click for multi-select
-                        </span>
-                        {focusedObject ? (
-                          <span className="rounded-full border border-mango/35 bg-mango/10 px-3 py-1.5 text-mango">
-                            Focused: {focusedObject.label}
-                          </span>
-                        ) : null}
-                        {selectedObjects.length > 1 ? (
-                          <span className="rounded-full border border-sky-300/30 bg-sky-300/10 px-3 py-1.5 text-sky-100">
-                            {selectedObjects.length} objects grouped
-                          </span>
-                        ) : null}
-                        {pinnedObjectIds.length > 0 ? (
-                          <span className="rounded-full border border-border/60 bg-background/44 px-3 py-1.5">
-                            <Sparkles className="mr-1 inline h-3.5 w-3.5 text-mango" />
-                            {pinnedObjectIds.length} pinned
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-[32px] bg-card/40 p-1 shadow-[0_24px_80px_rgba(0,0,0,0.08)] backdrop-blur-xl dark:shadow-[0_32px_100px_rgba(0,0,0,0.28)]">
-                    <div className="relative">
+                  <div className="relative min-h-[82vh] overflow-hidden rounded-[36px] border border-white/8 bg-[#030507] shadow-[0_30px_120px_rgba(0,0,0,0.45)]">
+                    <div className="pointer-events-none absolute inset-0 z-10 bg-[radial-gradient(circle_at_top,rgba(88,196,255,0.08),transparent_28%),radial-gradient(circle_at_bottom,rgba(245,166,35,0.08),transparent_22%)]" />
+                    <div className="absolute inset-0 z-0">
                       {focusedObject ? (
-                        <div className="pointer-events-none absolute left-4 top-4 z-30 rounded-full border border-mango/25 bg-black/45 px-4 py-2 text-sm text-white/85 backdrop-blur-xl">
+                        <div className="pointer-events-none absolute left-6 top-6 z-30 rounded-full border border-mango/25 bg-black/45 px-4 py-2 text-sm text-white/85 backdrop-blur-xl">
                           {focusedObject.label} · {formatConfidence(focusedObject.confidence)} · {focusedObject.n_observations} frames
                         </div>
                       ) : null}
@@ -939,37 +785,207 @@ export default function DashboardPage() {
                         onObjectActivate={(objectId, options) => activateObject(objectId, options?.additive)}
                         onObjectHover={setHoveredObjectId}
                         debugOptions={viewerDebug}
-                        height={760}
-                        className="rounded-[30px]"
+                        height={980}
+                        className="h-full rounded-none"
                       />
                     </div>
-                  </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-[28px] border border-border/60 bg-card/38 px-4 py-4 backdrop-blur-xl">
-                    <div className="flex flex-wrap gap-2">
-                      <Button variant="outline" className="rounded-full" onClick={() => navigateRelative(-1, "all")}>
-                        <ChevronLeft className="mr-2 h-4 w-4" />
-                        Previous object
+                    <div className="absolute left-5 top-24 z-30 hidden w-[320px] max-w-[26vw] xl:block">
+                      <SceneObjectBrowser
+                        objects={visibleObjects}
+                        query={objectQuery}
+                        selectedObjectIds={selectedObjectIds}
+                        focusedObjectId={focusedObjectId}
+                        pinnedObjectIds={pinnedObjectIds}
+                        hiddenLabels={hiddenLabels}
+                        hiddenObjectIds={hiddenObjectIds}
+                        onQueryChange={setObjectQuery}
+                        onSelectObject={activateObject}
+                        onSelectLabel={selectLabelGroup}
+                        onHoverObject={setHoveredObjectId}
+                        onTogglePin={togglePin}
+                        onHideObject={hideObject}
+                        onToggleLabelVisibility={toggleLabelVisibility}
+                        onResetVisibility={resetVisibility}
+                      />
+                    </div>
+
+                    <div className="absolute right-5 top-5 z-30 hidden w-[360px] max-w-[28vw] 2xl:block">
+                      <SceneObjectInspector
+                        focusedObject={focusedObject}
+                        selectedObjects={selectedObjects}
+                        pinnedObjectIds={pinnedObjectIds}
+                        displayMode={displayMode}
+                        evidence={evidence}
+                        evidenceLoading={evidenceLoading}
+                        activeEvidenceFrame={activeEvidenceFrame}
+                        onClearSelection={() => {
+                          setFocusedObjectId(null)
+                          setSelectedObjectIds([])
+                          setHoveredObjectId(null)
+                        }}
+                        onToggleIsolate={toggleIsolate}
+                        onTogglePin={togglePin}
+                        onHideObject={hideObject}
+                        onHideLabel={toggleLabelVisibility}
+                        onSelectEvidenceFrame={setActiveEvidenceFrame}
+                      />
+                    </div>
+
+                    <div className="absolute left-1/2 top-5 z-30 flex -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-full border border-white/10 bg-black/38 px-3 py-2 backdrop-blur-xl">
+                      <Button variant="outline" className="rounded-full border-white/10 bg-white/5 text-white hover:bg-white/10" onClick={() => createCameraCommand("reset")}>
+                        Reset view
                       </Button>
-                      <Button variant="outline" className="rounded-full" onClick={() => navigateRelative(1, "all")}>
-                        Next object
-                        <ChevronRight className="ml-2 h-4 w-4" />
+                      <Button variant="outline" className="rounded-full border-white/10 bg-white/5 text-white hover:bg-white/10" onClick={() => createCameraCommand("top")}>
+                        Top view
+                      </Button>
+                      <Button variant="outline" className="rounded-full border-white/10 bg-white/5 text-white hover:bg-white/10" onClick={() => createCameraCommand("overview")}>
+                        Overview
                       </Button>
                       <Button
                         variant="outline"
-                        className="rounded-full"
-                        onClick={() => navigateRelative(1, "class")}
+                        className="rounded-full border-white/10 bg-white/5 text-white hover:bg-white/10"
+                        onClick={() => createCameraCommand("focus")}
                         disabled={!focusedObject}
                       >
-                        Next in class
+                        Focus selected
                       </Button>
                     </div>
 
-                    <div className="text-sm text-muted-foreground">
-                      {focusedObject
-                        ? `Focused track ${focusedObject.track_id ?? "n/a"} at (${focusedObject.x.toFixed(2)}, ${focusedObject.y.toFixed(2)}, ${focusedObject.z.toFixed(2)})`
-                        : "Choose an object to activate focus mode."}
+                    <div className="absolute bottom-5 left-1/2 z-30 flex w-[min(960px,calc(100%-2.5rem))] -translate-x-1/2 flex-wrap items-center justify-between gap-3 rounded-[28px] border border-white/10 bg-black/42 px-4 py-4 backdrop-blur-2xl">
+                      <div className="flex flex-wrap gap-2">
+                        {DISPLAY_MODE_OPTIONS.map((option) => (
+                          <button
+                            key={option.key}
+                            type="button"
+                            onClick={() => setDisplayMode(option.key)}
+                            className={cn(
+                              "rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] transition-colors",
+                              displayMode === option.key
+                                ? "border-mango/35 bg-mango/10 text-mango"
+                                : "border-white/10 bg-white/5 text-white/72"
+                            )}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                        {COLOR_MODE_OPTIONS.map((option) => (
+                          <button
+                            key={option.key}
+                            type="button"
+                            onClick={() => setColorMode(option.key)}
+                            className={cn(
+                              "rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] transition-colors",
+                              colorMode === option.key
+                                ? "border-sky-300/35 bg-sky-300/10 text-sky-100"
+                                : "border-white/10 bg-white/5 text-white/72"
+                            )}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <Button variant="outline" className="rounded-full border-white/10 bg-white/5 text-white hover:bg-white/10" onClick={() => navigateRelative(-1, "all")}>
+                          <ChevronLeft className="mr-2 h-4 w-4" />
+                          Previous
+                        </Button>
+                        <Button variant="outline" className="rounded-full border-white/10 bg-white/5 text-white hover:bg-white/10" onClick={() => navigateRelative(1, "all")}>
+                          Next
+                          <ChevronRight className="ml-2 h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="rounded-full border-white/10 bg-white/5 text-white hover:bg-white/10"
+                          onClick={() => navigateRelative(1, "class")}
+                          disabled={!focusedObject}
+                        >
+                          Next in class
+                        </Button>
+                      </div>
                     </div>
+
+                    <div className="absolute right-5 top-5 z-30 flex max-w-[70vw] flex-wrap items-center justify-end gap-2 2xl:hidden">
+                      <button
+                        type="button"
+                        onClick={() => toggleViewerDebug("showApproxRegion")}
+                        className={cn(
+                          "rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] transition-colors",
+                          viewerDebug.showApproxRegion
+                            ? "border-emerald-400/35 bg-emerald-400/10 text-emerald-200"
+                            : "border-white/10 bg-black/36 text-white/72"
+                        )}
+                      >
+                        Approx
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => toggleViewerDebug("showExactPoints")}
+                        className={cn(
+                          "rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] transition-colors",
+                          viewerDebug.showExactPoints
+                            ? "border-emerald-400/35 bg-emerald-400/10 text-emerald-200"
+                            : "border-white/10 bg-black/36 text-white/72"
+                        )}
+                      >
+                        Support
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => toggleViewerDebug("showBBoxes")}
+                        className={cn(
+                          "rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] transition-colors",
+                          viewerDebug.showBBoxes
+                            ? "border-emerald-400/35 bg-emerald-400/10 text-emerald-200"
+                            : "border-white/10 bg-black/36 text-white/72"
+                        )}
+                      >
+                        BBox
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 xl:hidden">
+                    <SceneObjectBrowser
+                      objects={visibleObjects}
+                      query={objectQuery}
+                      selectedObjectIds={selectedObjectIds}
+                      focusedObjectId={focusedObjectId}
+                      pinnedObjectIds={pinnedObjectIds}
+                      hiddenLabels={hiddenLabels}
+                      hiddenObjectIds={hiddenObjectIds}
+                      onQueryChange={setObjectQuery}
+                      onSelectObject={activateObject}
+                      onSelectLabel={selectLabelGroup}
+                      onHoverObject={setHoveredObjectId}
+                      onTogglePin={togglePin}
+                      onHideObject={hideObject}
+                      onToggleLabelVisibility={toggleLabelVisibility}
+                      onResetVisibility={resetVisibility}
+                    />
+                  </div>
+
+                  <div className="grid gap-4 2xl:hidden">
+                    <SceneObjectInspector
+                      focusedObject={focusedObject}
+                      selectedObjects={selectedObjects}
+                      pinnedObjectIds={pinnedObjectIds}
+                      displayMode={displayMode}
+                      evidence={evidence}
+                      evidenceLoading={evidenceLoading}
+                      activeEvidenceFrame={activeEvidenceFrame}
+                      onClearSelection={() => {
+                        setFocusedObjectId(null)
+                        setSelectedObjectIds([])
+                        setHoveredObjectId(null)
+                      }}
+                      onToggleIsolate={toggleIsolate}
+                      onTogglePin={togglePin}
+                      onHideObject={hideObject}
+                      onHideLabel={toggleLabelVisibility}
+                      onSelectEvidenceFrame={setActiveEvidenceFrame}
+                    />
                   </div>
                 </div>
               ) : null}
@@ -1000,27 +1016,6 @@ export default function DashboardPage() {
               ) : null}
             </section>
 
-            <aside>
-              <SceneObjectInspector
-                focusedObject={focusedObject}
-                selectedObjects={selectedObjects}
-                pinnedObjectIds={pinnedObjectIds}
-                displayMode={displayMode}
-                evidence={evidence}
-                evidenceLoading={evidenceLoading}
-                activeEvidenceFrame={activeEvidenceFrame}
-                onClearSelection={() => {
-                  setFocusedObjectId(null)
-                  setSelectedObjectIds([])
-                  setHoveredObjectId(null)
-                }}
-                onToggleIsolate={toggleIsolate}
-                onTogglePin={togglePin}
-                onHideObject={hideObject}
-                onHideLabel={toggleLabelVisibility}
-                onSelectEvidenceFrame={setActiveEvidenceFrame}
-              />
-            </aside>
           </div>
         ) : null}
       </div>
