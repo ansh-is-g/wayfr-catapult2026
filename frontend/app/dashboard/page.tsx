@@ -4,6 +4,8 @@ import Link from "next/link"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   ArrowRight,
+  ChevronLeft,
+  ChevronRight,
   Download,
   ExternalLink,
   FolderClock,
@@ -11,15 +13,26 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Sparkles,
   TriangleAlert,
 } from "lucide-react"
 
-import { HomeSceneViewer } from "@/components/scene/HomeSceneViewer"
-import { SceneAnnotationPanel } from "@/components/scene/SceneAnnotationPanel"
+import {
+  type CameraPreset,
+  type ObjectItem,
+  type SceneColorMode,
+  type SceneDebugOptions,
+  type SceneDisplayMode,
+  HomeSceneViewer,
+} from "@/components/scene/HomeSceneViewer"
+import { SceneObjectBrowser } from "@/components/scene/SceneObjectBrowser"
+import {
+  type ObjectEvidencePayload,
+  SceneObjectInspector,
+} from "@/components/scene/SceneObjectInspector"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
@@ -37,19 +50,6 @@ type HomeSummary = {
 type HomeDetail = HomeSummary & {
   updated_at?: unknown
   error?: string | null
-}
-
-type ObjectItem = {
-  id: string
-  label: string
-  x: number
-  y: number
-  z: number
-  track_id?: number | null
-  bbox_min?: number[] | null
-  bbox_max?: number[] | null
-  confidence: number | null
-  n_observations: number
 }
 
 type HomesResponse = {
@@ -164,51 +164,73 @@ function EmptyPanel() {
   )
 }
 
+function formatConfidence(confidence: number | null) {
+  if (confidence == null) return "n/a"
+  return `${Math.round(confidence * 100)}%`
+}
+
+const COLOR_MODE_OPTIONS: Array<{ key: SceneColorMode; label: string }> = [
+  { key: "natural", label: "Natural" },
+  { key: "class", label: "By class" },
+  { key: "instance", label: "By instance" },
+  { key: "confidence", label: "By confidence" },
+  { key: "support", label: "By support" },
+]
+
+const DISPLAY_MODE_OPTIONS: Array<{ key: SceneDisplayMode; label: string }> = [
+  { key: "normal", label: "Normal" },
+  { key: "ghost", label: "Ghost" },
+  { key: "isolate", label: "Isolate" },
+]
+
 export default function DashboardPage() {
   const [homes, setHomes] = useState<HomeSummary[]>([])
   const [requestedHomeId, setRequestedHomeId] = useState("")
   const [selectedHomeId, setSelectedHomeId] = useState("")
   const [selectedHome, setSelectedHome] = useState<HomeDetail | null>(null)
   const [objects, setObjects] = useState<ObjectItem[]>([])
-  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null)
+  const [focusedObjectId, setFocusedObjectId] = useState<string | null>(null)
+  const [selectedObjectIds, setSelectedObjectIds] = useState<string[]>([])
   const [hoveredObjectId, setHoveredObjectId] = useState<string | null>(null)
   const [historyQuery, setHistoryQuery] = useState("")
-  const [annotationQuery, setAnnotationQuery] = useState("")
+  const [objectQuery, setObjectQuery] = useState("")
   const [hiddenLabels, setHiddenLabels] = useState<string[]>([])
-  const [viewerDebug, setViewerDebug] = useState({
+  const [hiddenObjectIds, setHiddenObjectIds] = useState<string[]>([])
+  const [pinnedObjectIds, setPinnedObjectIds] = useState<string[]>([])
+  const [displayMode, setDisplayMode] = useState<SceneDisplayMode>("normal")
+  const [colorMode, setColorMode] = useState<SceneColorMode>("natural")
+  const [viewerDebug, setViewerDebug] = useState<SceneDebugOptions>({
     showBBoxes: false,
     showCentroids: false,
     showApproxRegion: false,
     showExactPoints: false,
   })
+  const [cameraCommandNonce, setCameraCommandNonce] = useState(0)
+  const [cameraPreset, setCameraPreset] = useState<CameraPreset>("overview")
   const [homesLoading, setHomesLoading] = useState(true)
   const [homeLoading, setHomeLoading] = useState(false)
   const [homesError, setHomesError] = useState<string | null>(null)
   const [homeError, setHomeError] = useState<string | null>(null)
+  const [evidence, setEvidence] = useState<ObjectEvidencePayload | null>(null)
+  const [evidenceLoading, setEvidenceLoading] = useState(false)
+  const [activeEvidenceFrame, setActiveEvidenceFrame] = useState<number | null>(null)
 
   const loadHomes = useCallback(async (signal?: AbortSignal) => {
     setHomesError(null)
     setHomesLoading(true)
 
     try {
-      const response = await fetch(`${API_URL}/api/homes`, {
-        signal,
-        cache: "no-store",
-      })
-
+      const response = await fetch(`${API_URL}/api/homes`, { signal, cache: "no-store" })
       if (!response.ok) {
         throw new Error(`Failed to load homes (${response.status})`)
       }
-
       const data: HomesResponse = await response.json()
       setHomes(data.homes ?? [])
     } catch (error: unknown) {
       if (signal?.aborted) return
       setHomesError(error instanceof Error ? error.message : "Failed to load homes")
     } finally {
-      if (!signal?.aborted) {
-        setHomesLoading(false)
-      }
+      if (!signal?.aborted) setHomesLoading(false)
     }
   }, [])
 
@@ -224,23 +246,12 @@ export default function DashboardPage() {
 
     try {
       const [homeResponse, objectsResponse] = await Promise.all([
-        fetch(`${API_URL}/api/homes/${homeId}`, {
-          signal,
-          cache: "no-store",
-        }),
-        fetch(`${API_URL}/api/homes/${homeId}/objects`, {
-          signal,
-          cache: "no-store",
-        }),
+        fetch(`${API_URL}/api/homes/${homeId}`, { signal, cache: "no-store" }),
+        fetch(`${API_URL}/api/homes/${homeId}/objects`, { signal, cache: "no-store" }),
       ])
 
-      if (!homeResponse.ok) {
-        throw new Error(`Failed to load home (${homeResponse.status})`)
-      }
-
-      if (!objectsResponse.ok) {
-        throw new Error(`Failed to load objects (${objectsResponse.status})`)
-      }
+      if (!homeResponse.ok) throw new Error(`Failed to load home (${homeResponse.status})`)
+      if (!objectsResponse.ok) throw new Error(`Failed to load objects (${objectsResponse.status})`)
 
       const homeData: HomeResponse = await homeResponse.json()
       const objectData: ObjectsResponse = await objectsResponse.json()
@@ -258,6 +269,7 @@ export default function DashboardPage() {
         (objectData.objects ?? []).map((object) => ({
           id: object.id,
           label: object.label,
+          classLabel: object.label,
           x: object.x,
           y: object.y,
           z: object.z,
@@ -272,9 +284,7 @@ export default function DashboardPage() {
       if (signal?.aborted) return
       setHomeError(error instanceof Error ? error.message : "Failed to load selected home")
     } finally {
-      if (!signal?.aborted) {
-        setHomeLoading(false)
-      }
+      if (!signal?.aborted) setHomeLoading(false)
     }
   }, [])
 
@@ -286,7 +296,6 @@ export default function DashboardPage() {
 
     syncRequestedHome()
     window.addEventListener("popstate", syncRequestedHome)
-
     return () => window.removeEventListener("popstate", syncRequestedHome)
   }, [])
 
@@ -308,25 +317,29 @@ export default function DashboardPage() {
     }
 
     setSelectedHomeId((current) => {
-      if (current && homes.some((home) => home.home_id === current)) {
-        return current
-      }
-
+      if (current && homes.some((home) => home.home_id === current)) return current
       return homes[0]?.home_id ?? ""
     })
   }, [homes, requestedHomeId])
 
   useEffect(() => {
-    setAnnotationQuery("")
+    setObjectQuery("")
     setHiddenLabels([])
-    setSelectedObjectId(null)
+    setHiddenObjectIds([])
+    setPinnedObjectIds([])
+    setFocusedObjectId(null)
+    setSelectedObjectIds([])
     setHoveredObjectId(null)
+    setDisplayMode("normal")
+    setColorMode("natural")
     setViewerDebug({
       showBBoxes: false,
       showCentroids: false,
       showApproxRegion: false,
       showExactPoints: false,
     })
+    setEvidence(null)
+    setActiveEvidenceFrame(null)
   }, [selectedHomeId])
 
   useEffect(() => {
@@ -334,6 +347,18 @@ export default function DashboardPage() {
     void loadSelectedHome(selectedHomeId, controller.signal)
     return () => controller.abort()
   }, [selectedHomeId, loadSelectedHome])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setFocusedObjectId(null)
+        setSelectedObjectIds([])
+        setHoveredObjectId(null)
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [])
 
   const sortedHomes = useMemo(() => {
     return [...homes].sort((left, right) => {
@@ -346,7 +371,6 @@ export default function DashboardPage() {
   const filteredHomes = useMemo(() => {
     const query = historyQuery.trim().toLowerCase()
     if (!query) return sortedHomes
-
     return sortedHomes.filter((home) => {
       return (
         home.name.toLowerCase().includes(query) ||
@@ -360,43 +384,86 @@ export default function DashboardPage() {
   const activeHomeUpdatedAt = selectedHome?.updated_at ?? activeHome?.created_at
   const sceneUrl = activeHome ? `${API_URL}/api/homes/${activeHome.home_id}/scene` : ""
   const sceneVersion = activeHomeUpdatedAt ? String(activeHomeUpdatedAt) : undefined
-  const uniqueLabelCount = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          objects
-            .map((object) => object.label.trim().toLowerCase())
-            .filter(Boolean)
-        )
-      ).length,
-    [objects]
-  )
 
-  const filteredObjects = useMemo(() => {
-    const query = annotationQuery.trim().toLowerCase()
-
+  const visibleObjects = useMemo(() => {
+    const query = objectQuery.trim().toLowerCase()
     return objects.filter((object) => {
       const label = object.label.trim().toLowerCase()
       if (hiddenLabels.includes(label)) return false
+      if (hiddenObjectIds.includes(object.id)) return false
       if (query && !label.includes(query)) return false
       return true
     })
-  }, [annotationQuery, hiddenLabels, objects])
+  }, [hiddenLabels, hiddenObjectIds, objectQuery, objects])
 
-  const selectedObject = useMemo(
-    () => filteredObjects.find((object) => object.id === selectedObjectId) ?? null,
-    [filteredObjects, selectedObjectId]
+  const objectMap = useMemo(() => new Map(visibleObjects.map((object) => [object.id, object])), [visibleObjects])
+
+  const focusedObject = useMemo(
+    () => (focusedObjectId ? objectMap.get(focusedObjectId) ?? null : null),
+    [focusedObjectId, objectMap]
+  )
+
+  const selectedObjects = useMemo(
+    () => selectedObjectIds.map((id) => objectMap.get(id)).filter((object): object is ObjectItem => object != null),
+    [objectMap, selectedObjectIds]
   )
 
   useEffect(() => {
-    if (selectedObjectId && !filteredObjects.some((object) => object.id === selectedObjectId)) {
-      setSelectedObjectId(null)
+    setSelectedObjectIds((current) => current.filter((id) => objectMap.has(id)))
+    setFocusedObjectId((current) => (current && objectMap.has(current) ? current : null))
+    setHoveredObjectId((current) => (current && objectMap.has(current) ? current : null))
+  }, [objectMap])
+
+  useEffect(() => {
+    if (!activeHome?.home_id || !focusedObject?.track_id) {
+      setEvidence(null)
+      setActiveEvidenceFrame(null)
+      return
     }
 
-    if (hoveredObjectId && !filteredObjects.some((object) => object.id === hoveredObjectId)) {
-      setHoveredObjectId(null)
+    let cancelled = false
+    setEvidenceLoading(true)
+
+    void fetch(`${API_URL}/api/homes/${activeHome.home_id}/object-evidence/${focusedObject.track_id}`, {
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Failed to load object evidence (${response.status})`)
+        const payload: ObjectEvidencePayload = await response.json()
+        if (!cancelled) {
+          setEvidence(payload)
+          setActiveEvidenceFrame(payload.frames[0]?.sampled_frame_idx ?? null)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setEvidence({
+            track_id: focusedObject.track_id ?? -1,
+            frames: [],
+            message: "Supporting frames are not available for this object yet.",
+          })
+          setActiveEvidenceFrame(null)
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setEvidenceLoading(false)
+      })
+
+    return () => {
+      cancelled = true
     }
-  }, [filteredObjects, hoveredObjectId, selectedObjectId])
+  }, [activeHome?.home_id, focusedObject?.id, focusedObject?.track_id])
+
+  const createCameraCommand = useCallback((preset: CameraPreset) => {
+    setCameraPreset(preset)
+    setCameraCommandNonce((current) => current + 1)
+  }, [])
+
+  useEffect(() => {
+    if (focusedObjectId) {
+      createCameraCommand("focus")
+    }
+  }, [createCameraCommand, focusedObjectId])
 
   const selectHome = useCallback((homeId: string) => {
     setSelectedHomeId(homeId)
@@ -421,9 +488,7 @@ export default function DashboardPage() {
       objects,
     }
 
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: "application/json",
-    })
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" })
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement("a")
     anchor.href = url
@@ -432,46 +497,96 @@ export default function DashboardPage() {
     URL.revokeObjectURL(url)
   }, [activeHome, objects])
 
-  const toggleHiddenLabel = useCallback((label: string) => {
-    setHiddenLabels((current) => {
-      if (current.includes(label)) {
-        return current.filter((item) => item !== label)
+  const activateObject = useCallback((objectId: string, additive = false) => {
+    setSelectedObjectIds((current) => {
+      if (additive) {
+        if (current.includes(objectId)) {
+          const next = current.filter((id) => id !== objectId)
+          setFocusedObjectId((focused) => (focused === objectId ? next[0] ?? null : focused))
+          return next
+        }
+        return [...current, objectId]
       }
-
-      return [...current, label]
+      return [objectId]
     })
+    setFocusedObjectId(objectId)
   }, [])
 
-  const selectAllLabels = useCallback(() => {
-    setHiddenLabels([])
+  const selectLabelGroup = useCallback(
+    (label: string) => {
+      const ids = visibleObjects.filter((object) => object.label.trim().toLowerCase() === label).map((object) => object.id)
+      setSelectedObjectIds(ids)
+      setFocusedObjectId(ids[0] ?? null)
+    },
+    [visibleObjects]
+  )
+
+  const togglePin = useCallback((objectId: string) => {
+    setPinnedObjectIds((current) => (current.includes(objectId) ? current.filter((id) => id !== objectId) : [...current, objectId]))
   }, [])
 
-  const toggleViewerDebug = useCallback((key: "showBBoxes" | "showCentroids" | "showApproxRegion" | "showExactPoints") => {
-    setViewerDebug((current) => ({
-      ...current,
-      [key]: !current[key],
-    }))
+  const hideObject = useCallback((objectId: string) => {
+    setHiddenObjectIds((current) => (current.includes(objectId) ? current : [...current, objectId]))
   }, [])
 
-  const unselectAllLabels = useCallback(() => {
-    setHiddenLabels(
-      Array.from(
-        new Set(
-          objects
-            .map((object) => object.label.trim().toLowerCase())
-            .filter(Boolean)
-        )
-      )
+  const toggleLabelVisibility = useCallback((label: string) => {
+    const normalized = label.trim().toLowerCase()
+    setHiddenLabels((current) =>
+      current.includes(normalized) ? current.filter((item) => item !== normalized) : [...current, normalized]
     )
-  }, [objects])
+  }, [])
+
+  const toggleViewerDebug = useCallback((key: keyof SceneDebugOptions) => {
+    setViewerDebug((current) => ({ ...current, [key]: !current[key] }))
+  }, [])
+
+  const resetVisibility = useCallback(() => {
+    setHiddenLabels([])
+    setHiddenObjectIds([])
+  }, [])
+
+  const toggleIsolate = useCallback(() => {
+    setDisplayMode((current) => (current === "isolate" ? "normal" : "isolate"))
+  }, [])
+
+  const navigateRelative = useCallback(
+    (delta: number, scope: "all" | "class") => {
+      if (visibleObjects.length === 0) return
+
+      const candidates =
+        scope === "class" && focusedObject
+          ? visibleObjects.filter((object) => object.label === focusedObject.label)
+          : visibleObjects
+
+      if (candidates.length === 0) return
+      const currentIndex = focusedObjectId ? candidates.findIndex((object) => object.id === focusedObjectId) : -1
+      const nextIndex = currentIndex >= 0 ? (currentIndex + delta + candidates.length) % candidates.length : 0
+      const nextObject = candidates[nextIndex]
+      if (nextObject) activateObject(nextObject.id)
+    },
+    [activateObject, focusedObject, focusedObjectId, visibleObjects]
+  )
+
+  const uniqueLabelCount = useMemo(
+    () => Array.from(new Set(objects.map((object) => object.label.trim().toLowerCase()).filter(Boolean))).length,
+    [objects]
+  )
+
+  const cameraCommand = useMemo(
+    () => ({ preset: cameraPreset, nonce: cameraCommandNonce }),
+    [cameraCommandNonce, cameraPreset]
+  )
 
   return (
     <main className="min-h-full bg-background">
-      <div className="mx-auto w-full max-w-[1700px] px-4 py-4 sm:px-6 lg:px-8">
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="mx-auto w-full max-w-[1880px] px-4 py-4 sm:px-6 lg:px-8">
+        <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-mango/90">Dashboard</p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">Saved scenes</h1>
+            <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-mango/90">Scene explorer</p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">Living 3D annotations</h1>
+            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+              Explore, search, and focus annotated objects in context. The scene stays central while supporting frames explain what the model saw.
+            </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -494,7 +609,7 @@ export default function DashboardPage() {
             <div className="flex items-start gap-3">
               <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
               <div>
-                <p className="font-medium">Unable to load saved homes.</p>
+                <p className="font-medium">Unable to load saved scenes.</p>
                 <p className="mt-1 text-red-500/80">{homesError}</p>
               </div>
             </div>
@@ -504,35 +619,110 @@ export default function DashboardPage() {
         {!homesLoading && homes.length === 0 && !homesError ? <EmptyPanel /> : null}
 
         {homes.length > 0 ? (
-          <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-            <section className="min-w-0 space-y-4">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="truncate text-2xl font-semibold tracking-tight text-foreground">
-                      {activeHome?.name ?? "Select a scene"}
-                    </h2>
-                    {activeHome ? (
-                      <Badge className={cn("border font-medium", getStatusClasses(activeHome.status))}>
-                        {getStatusLabel(activeHome.status)}
-                      </Badge>
-                    ) : null}
-                  </div>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    {activeHome
-                      ? `Created ${formatDateTime(activeHome.created_at)}. Updated ${formatRelative(activeHomeUpdatedAt)}.`
-                      : "Choose a saved scene from history."}
-                  </p>
+          <div className="mt-6 grid gap-5 2xl:grid-cols-[320px_minmax(0,1fr)_360px]">
+            <aside className="space-y-4">
+              <SceneObjectBrowser
+                objects={visibleObjects}
+                query={objectQuery}
+                selectedObjectIds={selectedObjectIds}
+                focusedObjectId={focusedObjectId}
+                pinnedObjectIds={pinnedObjectIds}
+                hiddenLabels={hiddenLabels}
+                hiddenObjectIds={hiddenObjectIds}
+                onQueryChange={setObjectQuery}
+                onSelectObject={activateObject}
+                onSelectLabel={selectLabelGroup}
+                onHoverObject={setHoveredObjectId}
+                onTogglePin={togglePin}
+                onHideObject={hideObject}
+                onToggleLabelVisibility={toggleLabelVisibility}
+                onResetVisibility={resetVisibility}
+              />
+
+              <div className="rounded-[28px] bg-card/52 p-4 backdrop-blur-xl">
+                <div>
+                  <h3 className="text-lg font-semibold text-foreground">Scene library</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">Pick another walkthrough without leaving the explorer.</p>
                 </div>
 
-                {activeHome ? (
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" className="rounded-full" onClick={downloadObjects}>
-                      <Download className="mr-2 h-4 w-4" />
-                      Export
-                    </Button>
-                    {activeHome.status === "ready" ? (
-                      <>
+                <div className="relative mt-3">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={historyQuery}
+                    onChange={(event) => setHistoryQuery(event.target.value)}
+                    placeholder="Search scenes"
+                    className="rounded-2xl border-border/70 bg-background/55 pl-10"
+                  />
+                </div>
+
+                <div className="mt-3 max-h-[420px] space-y-2 overflow-y-auto pr-1">
+                  {filteredHomes.length > 0 ? (
+                    filteredHomes.map((home) => {
+                      const isSelected = home.home_id === activeHome?.home_id
+
+                      return (
+                        <button
+                          key={home.home_id}
+                          type="button"
+                          onClick={() => selectHome(home.home_id)}
+                          className={cn(
+                            "w-full rounded-2xl px-4 py-3 text-left transition-colors",
+                            isSelected ? "bg-mango/10 text-foreground" : "bg-background/45 text-foreground hover:bg-mango/6"
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate font-medium">{home.name}</p>
+                              <p className="mt-1 font-mono text-[11px] text-muted-foreground">{home.home_id}</p>
+                            </div>
+                            <Badge className={cn("border shrink-0", getStatusClasses(home.status))}>
+                              {getStatusLabel(home.status)}
+                            </Badge>
+                          </div>
+                          <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                            <span>{home.num_objects} objects</span>
+                            <span>{formatDateTime(home.created_at)}</span>
+                          </div>
+                        </button>
+                      )
+                    })
+                  ) : (
+                    <div className="rounded-2xl bg-background/35 px-4 py-5 text-sm text-muted-foreground">
+                      No scenes match this filter.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </aside>
+
+            <section className="min-w-0 space-y-4">
+              <div className="rounded-[28px] border border-border/60 bg-card/40 px-5 py-5 backdrop-blur-2xl">
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="truncate text-2xl font-semibold tracking-tight text-foreground">
+                        {activeHome?.name ?? "Select a scene"}
+                      </h2>
+                      {activeHome ? (
+                        <Badge className={cn("border font-medium", getStatusClasses(activeHome.status))}>
+                          {getStatusLabel(activeHome.status)}
+                        </Badge>
+                      ) : null}
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {activeHome
+                        ? `Created ${formatDateTime(activeHome.created_at)}. Updated ${formatRelative(activeHomeUpdatedAt)}.`
+                        : "Choose a saved scene from the library."}
+                    </p>
+                  </div>
+
+                  {activeHome ? (
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="outline" className="rounded-full" onClick={downloadObjects}>
+                        <Download className="mr-2 h-4 w-4" />
+                        Export
+                      </Button>
+                      {activeHome.status === "ready" ? (
                         <a
                           href={sceneUrl}
                           target="_blank"
@@ -542,10 +732,37 @@ export default function DashboardPage() {
                           <ExternalLink className="mr-2 h-4 w-4" />
                           Open GLB
                         </a>
-                      </>
-                    ) : null}
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-[24px] bg-background/42 px-4 py-4">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Objects</p>
+                    <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">{objects.length}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Anchored in this scene</p>
                   </div>
-                ) : null}
+                  <div className="rounded-[24px] bg-background/42 px-4 py-4">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Classes</p>
+                    <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">{uniqueLabelCount}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Distinct labels</p>
+                  </div>
+                  <div className="rounded-[24px] bg-background/42 px-4 py-4">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Visible</p>
+                    <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">{visibleObjects.length}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Matching current filters</p>
+                  </div>
+                  <div className="rounded-[24px] bg-background/42 px-4 py-4">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Focused</p>
+                    <p className="mt-2 text-lg font-semibold tracking-tight text-foreground">
+                      {focusedObject ? focusedObject.label : "None"}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {focusedObject ? `${focusedObject.n_observations} frames · ${formatConfidence(focusedObject.confidence)}` : "Click an object to focus"}
+                    </p>
+                  </div>
+                </div>
               </div>
 
               {homeError ? (
@@ -563,144 +780,195 @@ export default function DashboardPage() {
 
               {activeHome?.status === "ready" ? (
                 <div className="space-y-4">
-                  <div className="rounded-[24px] border border-border/60 bg-card/38 px-4 py-4 backdrop-blur-xl">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                      <div>
-                        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-mango/85">
-                          Annotation Viewer
-                        </p>
-                        <p className="mt-2 text-sm text-muted-foreground">
-                          Select an annotation from the list or click its approximate region in the scene.
-                          The mesh itself is highlighted; boxes are debug-only.
-                        </p>
+                  <div className="rounded-[28px] border border-border/60 bg-card/38 px-4 py-4 backdrop-blur-xl">
+                    <div className="flex flex-col gap-4">
+                      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                        <div>
+                          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-mango/85">Explorer controls</p>
+                          <p className="mt-2 text-sm text-muted-foreground">
+                            Hover to preview, click to focus, use shift-click to build a group, and keep selection sticky until you clear it.
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <Button variant="outline" className="rounded-full" onClick={() => createCameraCommand("reset")}>
+                            Reset view
+                          </Button>
+                          <Button variant="outline" className="rounded-full" onClick={() => createCameraCommand("top")}>
+                            Top view
+                          </Button>
+                          <Button variant="outline" className="rounded-full" onClick={() => createCameraCommand("overview")}>
+                            Overview
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="rounded-full"
+                            onClick={() => createCameraCommand("focus")}
+                            disabled={!focusedObject}
+                          >
+                            Focus selected
+                          </Button>
+                        </div>
                       </div>
 
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => toggleViewerDebug("showApproxRegion")}
-                          className={cn(
-                            "rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] transition-colors",
-                            viewerDebug.showApproxRegion
-                              ? "border-mango/35 bg-mango/10 text-mango"
-                              : "border-border/60 bg-background/40 text-muted-foreground"
-                          )}
-                        >
-                          Approx Region
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => toggleViewerDebug("showExactPoints")}
-                          className={cn(
-                            "rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] transition-colors",
-                            viewerDebug.showExactPoints
-                              ? "border-mango/35 bg-mango/10 text-mango"
-                              : "border-border/60 bg-background/40 text-muted-foreground"
-                          )}
-                        >
-                          Exact Points
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => toggleViewerDebug("showBBoxes")}
-                          className={cn(
-                            "rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] transition-colors",
-                            viewerDebug.showBBoxes
-                              ? "border-mango/35 bg-mango/10 text-mango"
-                              : "border-border/60 bg-background/40 text-muted-foreground"
-                          )}
-                        >
-                          BBox
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => toggleViewerDebug("showCentroids")}
-                          className={cn(
-                            "rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] transition-colors",
-                            viewerDebug.showCentroids
-                              ? "border-mango/35 bg-mango/10 text-mango"
-                              : "border-border/60 bg-background/40 text-muted-foreground"
-                          )}
-                        >
-                          Centroid
-                        </button>
-                      </div>
-                    </div>
+                      <div className="grid gap-3 xl:grid-cols-[1.4fr_1fr_1fr]">
+                        <div>
+                          <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                            Scene mode
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {DISPLAY_MODE_OPTIONS.map((option) => (
+                              <button
+                                key={option.key}
+                                type="button"
+                                onClick={() => setDisplayMode(option.key)}
+                                className={cn(
+                                  "rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] transition-colors",
+                                  displayMode === option.key
+                                    ? "border-mango/35 bg-mango/10 text-mango"
+                                    : "border-border/60 bg-background/40 text-muted-foreground"
+                                )}
+                              >
+                                {option.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
 
-                    <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <span className="rounded-full border border-border/60 bg-background/44 px-3 py-1.5">
-                        Default selection: mesh focus + scene dim
-                      </span>
-                      {selectedObject ? (
-                        <span className="rounded-full border border-mango/35 bg-mango/10 px-3 py-1.5 text-mango">
-                          Selected: {selectedObject.label}
-                        </span>
-                      ) : (
+                        <div>
+                          <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                            Color mode
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {COLOR_MODE_OPTIONS.map((option) => (
+                              <button
+                                key={option.key}
+                                type="button"
+                                onClick={() => setColorMode(option.key)}
+                                className={cn(
+                                  "rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] transition-colors",
+                                  colorMode === option.key
+                                    ? "border-sky-300/35 bg-sky-300/10 text-sky-100"
+                                    : "border-border/60 bg-background/40 text-muted-foreground"
+                                )}
+                              >
+                                {option.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                            Debug views
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {(
+                              [
+                                ["showApproxRegion", "Approx"],
+                                ["showExactPoints", "Support"],
+                                ["showBBoxes", "BBox"],
+                                ["showCentroids", "Centroid"],
+                              ] as const
+                            ).map(([key, label]) => (
+                              <button
+                                key={key}
+                                type="button"
+                                onClick={() => toggleViewerDebug(key)}
+                                className={cn(
+                                  "rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] transition-colors",
+                                  viewerDebug[key]
+                                    ? "border-emerald-400/35 bg-emerald-400/10 text-emerald-200"
+                                    : "border-border/60 bg-background/40 text-muted-foreground"
+                                )}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                         <span className="rounded-full border border-border/60 bg-background/44 px-3 py-1.5">
-                          No object selected
+                          Sticky selection with Esc to clear
                         </span>
-                      )}
+                        <span className="rounded-full border border-border/60 bg-background/44 px-3 py-1.5">
+                          Shift + click for multi-select
+                        </span>
+                        {focusedObject ? (
+                          <span className="rounded-full border border-mango/35 bg-mango/10 px-3 py-1.5 text-mango">
+                            Focused: {focusedObject.label}
+                          </span>
+                        ) : null}
+                        {selectedObjects.length > 1 ? (
+                          <span className="rounded-full border border-sky-300/30 bg-sky-300/10 px-3 py-1.5 text-sky-100">
+                            {selectedObjects.length} objects grouped
+                          </span>
+                        ) : null}
+                        {pinnedObjectIds.length > 0 ? (
+                          <span className="rounded-full border border-border/60 bg-background/44 px-3 py-1.5">
+                            <Sparkles className="mr-1 inline h-3.5 w-3.5 text-mango" />
+                            {pinnedObjectIds.length} pinned
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
 
                   <div className="rounded-[32px] bg-card/40 p-1 shadow-[0_24px_80px_rgba(0,0,0,0.08)] backdrop-blur-xl dark:shadow-[0_32px_100px_rgba(0,0,0,0.28)]">
-                    <HomeSceneViewer
-                      homeId={activeHome.home_id}
-                      glbUrl={sceneUrl}
-                      sceneVersion={sceneVersion}
-                      objects={filteredObjects}
-                      mode="annotator"
-                      selectedObjectId={selectedObjectId}
-                      hoveredObjectId={hoveredObjectId}
-                      onObjectSelect={setSelectedObjectId}
-                      onObjectHover={setHoveredObjectId}
-                      debugOptions={viewerDebug}
-                      height={700}
-                      className="rounded-[30px]"
-                    />
+                    <div className="relative">
+                      {focusedObject ? (
+                        <div className="pointer-events-none absolute left-4 top-4 z-30 rounded-full border border-mango/25 bg-black/45 px-4 py-2 text-sm text-white/85 backdrop-blur-xl">
+                          {focusedObject.label} · {formatConfidence(focusedObject.confidence)} · {focusedObject.n_observations} frames
+                        </div>
+                      ) : null}
+
+                      <HomeSceneViewer
+                        homeId={activeHome.home_id}
+                        glbUrl={sceneUrl}
+                        sceneVersion={sceneVersion}
+                        objects={visibleObjects}
+                        mode="annotator"
+                        focusedObjectId={focusedObjectId}
+                        selectedObjectIds={selectedObjectIds}
+                        hoveredObjectId={hoveredObjectId}
+                        displayMode={displayMode}
+                        colorMode={colorMode}
+                        cameraCommand={cameraCommand}
+                        onObjectActivate={(objectId, options) => activateObject(objectId, options?.additive)}
+                        onObjectHover={setHoveredObjectId}
+                        debugOptions={viewerDebug}
+                        height={760}
+                        className="rounded-[30px]"
+                      />
+                    </div>
                   </div>
 
-                  <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
-                    <div className="rounded-[24px] bg-card/45 px-4 py-4 backdrop-blur-xl">
-                      <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                        Objects
-                      </p>
-                      <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
-                        {objects.length}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">Anchored in this scene</p>
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-[28px] border border-border/60 bg-card/38 px-4 py-4 backdrop-blur-xl">
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="outline" className="rounded-full" onClick={() => navigateRelative(-1, "all")}>
+                        <ChevronLeft className="mr-2 h-4 w-4" />
+                        Previous object
+                      </Button>
+                      <Button variant="outline" className="rounded-full" onClick={() => navigateRelative(1, "all")}>
+                        Next object
+                        <ChevronRight className="ml-2 h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="rounded-full"
+                        onClick={() => navigateRelative(1, "class")}
+                        disabled={!focusedObject}
+                      >
+                        Next in class
+                      </Button>
                     </div>
 
-                    <div className="rounded-[24px] bg-card/45 px-4 py-4 backdrop-blur-xl">
-                      <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                        Labels
-                      </p>
-                      <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
-                        {uniqueLabelCount}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">Distinct annotation types</p>
-                    </div>
-
-                    <div className="rounded-[24px] bg-card/45 px-4 py-4 backdrop-blur-xl">
-                      <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                        Visible
-                      </p>
-                      <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
-                        {filteredObjects.length}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">Matching current filters</p>
-                    </div>
-
-                    <div className="rounded-[24px] bg-card/45 px-4 py-4 backdrop-blur-xl">
-                      <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                        Updated
-                      </p>
-                      <p className="mt-2 text-lg font-semibold tracking-tight text-foreground">
-                        {formatRelative(activeHomeUpdatedAt)}
-                      </p>
-                      <p className="mt-1 truncate text-xs text-muted-foreground">
-                        {activeHome.home_id}
-                      </p>
+                    <div className="text-sm text-muted-foreground">
+                      {focusedObject
+                        ? `Focused track ${focusedObject.track_id ?? "n/a"} at (${focusedObject.x.toFixed(2)}, ${focusedObject.y.toFixed(2)}, ${focusedObject.z.toFixed(2)})`
+                        : "Choose an object to activate focus mode."}
                     </div>
                   </div>
                 </div>
@@ -715,7 +983,7 @@ export default function DashboardPage() {
                     <div>
                       <h3 className="text-lg font-semibold text-foreground">Scene is still processing</h3>
                       <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                        Setup is still building the annotated GLB and object anchors for this home.
+                        Setup is still building the annotated GLB, object anchors, and supporting evidence for this walkthrough.
                       </p>
                     </div>
                   </div>
@@ -732,89 +1000,26 @@ export default function DashboardPage() {
               ) : null}
             </section>
 
-            <aside className="space-y-4">
-              <div className="rounded-[28px] bg-card/52 p-4 backdrop-blur-xl">
-                <SceneAnnotationPanel
-                  className="border-0 bg-transparent shadow-none ring-0"
-                  objects={objects}
-                  visibleObjects={filteredObjects}
-                  query={annotationQuery}
-                  hiddenLabels={hiddenLabels}
-                  selectedObjectId={selectedObjectId}
-                  hoveredObjectId={hoveredObjectId}
-                  onQueryChange={setAnnotationQuery}
-                  onToggleLabel={toggleHiddenLabel}
-                  onSelectAll={selectAllLabels}
-                  onUnselectAll={unselectAllLabels}
-                  onObjectSelect={setSelectedObjectId}
-                  onObjectHover={setHoveredObjectId}
-                  onReset={() => {
-                    setAnnotationQuery("")
-                    setHiddenLabels([])
-                    setSelectedObjectId(null)
-                    setHoveredObjectId(null)
-                  }}
-                />
-
-                <Separator className="my-4 bg-border/50" />
-
-                <div className="space-y-3">
-                  <div>
-                    <h3 className="text-lg font-semibold text-foreground">History</h3>
-                    <p className="mt-1 text-sm text-muted-foreground">Newest first.</p>
-                  </div>
-
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      value={historyQuery}
-                      onChange={(event) => setHistoryQuery(event.target.value)}
-                      placeholder="Search scenes"
-                      className="rounded-2xl border-border/70 bg-background/55 pl-10"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    {filteredHomes.length > 0 ? (
-                      filteredHomes.map((home) => {
-                        const isSelected = home.home_id === activeHome?.home_id
-
-                        return (
-                          <button
-                            key={home.home_id}
-                            type="button"
-                            onClick={() => selectHome(home.home_id)}
-                            className={cn(
-                              "w-full rounded-2xl px-4 py-3 text-left transition-colors",
-                              isSelected
-                                ? "bg-mango/10 text-foreground"
-                                : "bg-background/45 text-foreground hover:bg-mango/6"
-                            )}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <p className="truncate font-medium">{home.name}</p>
-                                <p className="mt-1 font-mono text-[11px] text-muted-foreground">{home.home_id}</p>
-                              </div>
-                              <Badge className={cn("border shrink-0", getStatusClasses(home.status))}>
-                                {getStatusLabel(home.status)}
-                              </Badge>
-                            </div>
-                            <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-                              <span>{home.num_objects} objects</span>
-                              <span>{formatDateTime(home.created_at)}</span>
-                            </div>
-                          </button>
-                        )
-                      })
-                    ) : (
-                      <div className="rounded-2xl bg-background/35 px-4 py-5 text-sm text-muted-foreground">
-                        No scenes match this filter.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+            <aside>
+              <SceneObjectInspector
+                focusedObject={focusedObject}
+                selectedObjects={selectedObjects}
+                pinnedObjectIds={pinnedObjectIds}
+                displayMode={displayMode}
+                evidence={evidence}
+                evidenceLoading={evidenceLoading}
+                activeEvidenceFrame={activeEvidenceFrame}
+                onClearSelection={() => {
+                  setFocusedObjectId(null)
+                  setSelectedObjectIds([])
+                  setHoveredObjectId(null)
+                }}
+                onToggleIsolate={toggleIsolate}
+                onTogglePin={togglePin}
+                onHideObject={hideObject}
+                onHideLabel={toggleLabelVisibility}
+                onSelectEvidenceFrame={setActiveEvidenceFrame}
+              />
             </aside>
           </div>
         ) : null}

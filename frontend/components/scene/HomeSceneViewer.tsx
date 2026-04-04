@@ -10,6 +10,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 export type ObjectItem = {
   id: string
   label: string
+  classLabel?: string
   x: number
   y: number
   z: number
@@ -25,6 +26,15 @@ export type SceneDebugOptions = {
   showCentroids: boolean
   showApproxRegion: boolean
   showExactPoints: boolean
+}
+
+export type SceneDisplayMode = "normal" | "ghost" | "isolate"
+export type SceneColorMode = "natural" | "class" | "instance" | "confidence" | "support"
+export type CameraPreset = "overview" | "top" | "reset" | "focus"
+
+export type CameraCommand = {
+  preset: CameraPreset
+  nonce: number
 }
 
 export type ExactObjectHighlight = {
@@ -51,9 +61,13 @@ export interface HomeSceneViewerProps {
   targetLabel?: string
   height?: number
   className?: string
-  selectedObjectId?: string | null
+  focusedObjectId?: string | null
+  selectedObjectIds?: string[]
   hoveredObjectId?: string | null
-  onObjectSelect?: (objectId: string | null) => void
+  displayMode?: SceneDisplayMode
+  colorMode?: SceneColorMode
+  cameraCommand?: CameraCommand | null
+  onObjectActivate?: (objectId: string, options?: { additive?: boolean }) => void
   onObjectHover?: (objectId: string | null) => void
   debugOptions?: Partial<SceneDebugOptions>
 }
@@ -138,7 +152,7 @@ async function resolveSceneAsset(homeId: string | undefined, glbUrl: string, sce
         sceneObjectUrlCache.set(cacheKey, asset)
         return asset
       } catch {
-        // Fall through to backend scene URL when the local file is unavailable.
+        // Fall back to the backend scene URL when the local file is unavailable.
       }
     }
 
@@ -173,16 +187,17 @@ export function HomeSceneViewer({
   targetLabel,
   height = 400,
   className,
-  selectedObjectId = null,
+  focusedObjectId = null,
+  selectedObjectIds = [],
   hoveredObjectId = null,
-  onObjectSelect,
+  displayMode = "normal",
+  colorMode = "natural",
+  cameraCommand = null,
+  onObjectActivate,
   onObjectHover,
   debugOptions,
 }: HomeSceneViewerProps) {
-  const mergedDebugOptions = useMemo(
-    () => ({ ...DEFAULT_DEBUG_OPTIONS, ...debugOptions }),
-    [debugOptions]
-  )
+  const mergedDebugOptions = useMemo(() => ({ ...DEFAULT_DEBUG_OPTIONS, ...debugOptions }), [debugOptions])
   const sceneKey = useMemo(
     () => buildSceneCacheKey(homeId, glbUrl, sceneVersion),
     [glbUrl, homeId, sceneVersion]
@@ -200,15 +215,6 @@ export function HomeSceneViewer({
     key: sceneKey,
     count: 0,
   })
-
-  const navActive = !!path && path.length > 0
-  const resolvedScene = sceneState.key === sceneKey ? sceneState.asset : null
-  const glbFailed = sceneState.key === sceneKey ? sceneState.failed : false
-  const vertexCount = vertexState.key === sceneKey ? vertexState.count : 0
-  const selectedObject = useMemo(
-    () => objects.find((object) => object.id === selectedObjectId) ?? null,
-    [objects, selectedObjectId]
-  )
   const [exactHighlightState, setExactHighlightState] = useState<{
     key: string
     data: ExactObjectHighlight | null
@@ -219,13 +225,21 @@ export function HomeSceneViewer({
     unavailable: false,
   })
 
+  const navActive = !!path && path.length > 0
+  const resolvedScene = sceneState.key === sceneKey ? sceneState.asset : null
+  const glbFailed = sceneState.key === sceneKey ? sceneState.failed : false
+  const vertexCount = vertexState.key === sceneKey ? vertexState.count : 0
+  const focusedObject = useMemo(
+    () => objects.find((object) => object.id === focusedObjectId) ?? null,
+    [focusedObjectId, objects]
+  )
+
   const handlePointCount = useCallback(
     (count: number) => {
       setVertexState((current) => {
         if (current.key === sceneKey && current.count === count) {
           return current
         }
-
         return { key: sceneKey, count }
       })
     },
@@ -234,8 +248,7 @@ export function HomeSceneViewer({
 
   const handleGlbError = useCallback(() => {
     setSceneState((current) => {
-      if (current.key !== sceneKey) return current
-      if (current.failed) return current
+      if (current.key !== sceneKey || current.failed) return current
       return { ...current, failed: true }
     })
   }, [sceneKey])
@@ -271,7 +284,7 @@ export function HomeSceneViewer({
   }, [glbUrl, homeId, sceneKey, sceneVersion])
 
   useEffect(() => {
-    const trackId = selectedObject?.track_id
+    const trackId = focusedObject?.track_id
     const highlightKey = homeId && trackId != null ? `${sceneKey}:${trackId}` : ""
 
     if (mode !== "annotator" || !mergedDebugOptions.showExactPoints || !homeId || trackId == null) {
@@ -303,7 +316,7 @@ export function HomeSceneViewer({
             unavailable: false,
             data: {
               trackId,
-              label: String(payload.label ?? selectedObject?.label ?? ""),
+              label: String(payload.label ?? focusedObject?.label ?? ""),
               pointCount: Number(payload.point_count ?? sampledPoints.length),
               sampledPointCount: Number(payload.sampled_point_count ?? sampledPoints.length),
               sampledPoints,
@@ -324,10 +337,10 @@ export function HomeSceneViewer({
     return () => {
       cancelled = true
     }
-  }, [homeId, mergedDebugOptions.showExactPoints, mode, sceneKey, selectedObject?.id, selectedObject?.label, selectedObject?.track_id])
+  }, [focusedObject?.id, focusedObject?.label, focusedObject?.track_id, homeId, mergedDebugOptions.showExactPoints, mode, sceneKey])
 
   const exactHighlight =
-    exactHighlightState.key === (homeId && selectedObject?.track_id != null ? `${sceneKey}:${selectedObject.track_id}` : "")
+    exactHighlightState.key === (homeId && focusedObject?.track_id != null ? `${sceneKey}:${focusedObject.track_id}` : "")
       ? exactHighlightState.data
       : null
 
@@ -336,7 +349,7 @@ export function HomeSceneViewer({
       className={cn("relative", className)}
       style={{ width: "100%", height, position: "relative", borderRadius: 8, overflow: "hidden" }}
     >
-      {resolvedScene?.url && (
+      {resolvedScene?.url ? (
         <Scene
           glbUrl={resolvedScene.url}
           objects={objects}
@@ -344,23 +357,30 @@ export function HomeSceneViewer({
           path={path}
           currentStepIndex={currentStepIndex ?? 0}
           targetLabel={targetLabel}
-          selectedObjectId={selectedObjectId}
+          focusedObjectId={focusedObjectId}
+          selectedObjectIds={selectedObjectIds}
           hoveredObjectId={hoveredObjectId}
-          onObjectSelect={onObjectSelect}
+          displayMode={displayMode}
+          colorMode={colorMode}
+          cameraCommand={cameraCommand}
+          onObjectActivate={onObjectActivate}
           onObjectHover={onObjectHover}
           debugOptions={mergedDebugOptions}
           exactHighlight={exactHighlight}
           onPointCount={handlePointCount}
           onGlbError={handleGlbError}
         />
-      )}
+      ) : null}
 
       <div className="pointer-events-none absolute bottom-3 left-3 z-20 rounded-full border border-white/10 bg-black/45 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-white/72 backdrop-blur-xl">
         {vertexCount > 0 ? `${vertexCount.toLocaleString()} verts` : glbFailed ? "scene unavailable" : "loading room mesh"}
         {" · "}
-        {objects.length} annotations
-        {navActive ? " · navigation" : " · orbit"}
-        {mode === "annotator" ? " · annotator" : ""}
+        {objects.length} visible
+        {" · "}
+        {displayMode}
+        {" · "}
+        {colorMode}
+        {navActive ? " · navigation" : " · explore"}
       </div>
     </div>
   )

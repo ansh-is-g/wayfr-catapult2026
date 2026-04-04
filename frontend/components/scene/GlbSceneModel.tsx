@@ -11,10 +11,13 @@ export interface SceneFocusRegion {
   bboxMax: [number, number, number]
 }
 
+type SceneDisplayMode = "normal" | "ghost" | "isolate"
+
 interface GlbSceneModelProps {
   url: string
   selectionRegion?: SceneFocusRegion | null
   hoverRegion?: SceneFocusRegion | null
+  sceneDisplayMode?: SceneDisplayMode
   onLoad?: (vertexCount: number) => void
   onError?: (err: Error) => void
 }
@@ -25,6 +28,7 @@ type AnnotatorUniforms = {
   uAnnotatorSelectionMax: { value: THREE.Vector3 }
   uAnnotatorSelectionCenter: { value: THREE.Vector3 }
   uAnnotatorSelectionColor: { value: THREE.Color }
+  uAnnotatorContextDim: { value: number }
   uAnnotatorHoverEnabled: { value: number }
   uAnnotatorHoverMin: { value: THREE.Vector3 }
   uAnnotatorHoverMax: { value: THREE.Vector3 }
@@ -45,6 +49,7 @@ function createAnnotatorUniforms(): AnnotatorUniforms {
     uAnnotatorSelectionMax: { value: DISABLED_MAX.clone() },
     uAnnotatorSelectionCenter: { value: DISABLED_CENTER.clone() },
     uAnnotatorSelectionColor: { value: SELECTED_COLOR.clone() },
+    uAnnotatorContextDim: { value: 0.56 },
     uAnnotatorHoverEnabled: { value: 0 },
     uAnnotatorHoverMin: { value: DISABLED_MIN.clone() },
     uAnnotatorHoverMax: { value: DISABLED_MAX.clone() },
@@ -82,6 +87,7 @@ uniform vec3 uAnnotatorSelectionMin;
 uniform vec3 uAnnotatorSelectionMax;
 uniform vec3 uAnnotatorSelectionCenter;
 uniform vec3 uAnnotatorSelectionColor;
+uniform float uAnnotatorContextDim;
 uniform float uAnnotatorHoverEnabled;
 uniform vec3 uAnnotatorHoverMin;
 uniform vec3 uAnnotatorHoverMax;
@@ -143,7 +149,7 @@ if (uAnnotatorHoverEnabled > 0.5) {
 
 if (uAnnotatorSelectionEnabled > 0.5) {
   float annotatorKeep = max(annotatorSelectionMask, annotatorHoverMask * 0.35);
-  annotatorColor *= mix(0.32, 1.0, annotatorKeep);
+  annotatorColor *= mix(uAnnotatorContextDim, 1.0, annotatorKeep);
   annotatorColor = mix(
     annotatorColor,
     annotatorColor * 1.18 + uAnnotatorSelectionColor * 0.22,
@@ -264,7 +270,20 @@ function applyRegion(uniforms: AnnotatorUniforms, prefix: "Selection" | "Hover",
   uniforms[centerKey].value.set(region.center[0], region.center[1], region.center[2])
 }
 
-export function GlbSceneModel({ url, selectionRegion, hoverRegion, onLoad, onError }: GlbSceneModelProps) {
+function contextDimForMode(mode: SceneDisplayMode | undefined) {
+  if (mode === "ghost") return 0.2
+  if (mode === "isolate") return 0.045
+  return 0.56
+}
+
+export function GlbSceneModel({
+  url,
+  selectionRegion,
+  hoverRegion,
+  sceneDisplayMode = "normal",
+  onLoad,
+  onError,
+}: GlbSceneModelProps) {
   const gltf = useLoader(GLTFLoader, url, undefined, (event) => {
     if (event instanceof ErrorEvent && onError) {
       onError(new Error(event.message))
@@ -312,9 +331,10 @@ export function GlbSceneModel({ url, selectionRegion, hoverRegion, onLoad, onErr
         if (!uniforms) return
         applyRegion(uniforms, "Selection", selectionRegion)
         applyRegion(uniforms, "Hover", hoverRegion)
+        uniforms.uAnnotatorContextDim.value = contextDimForMode(sceneDisplayMode)
       })
     })
-  }, [hoverRegion, scene, selectionRegion])
+  }, [hoverRegion, scene, sceneDisplayMode, selectionRegion])
 
   useEffect(() => {
     if (vertexCount > 0) {
