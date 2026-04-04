@@ -42,7 +42,7 @@ uploads/
 *.pth
 
 # Playwright MCP
-.playwright-mcp/
+.cursorignore
 
 # Screenshots and images
 *.png
