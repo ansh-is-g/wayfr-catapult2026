@@ -5,16 +5,44 @@ import dynamic from "next/dynamic"
 
 import { cn } from "@/lib/utils"
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
+
 export type ObjectItem = {
   id: string
   label: string
+  classLabel?: string
   x: number
   y: number
   z: number
+  track_id?: number | null
   confidence: number | null
   n_observations: number
   bbox_min?: number[] | null
   bbox_max?: number[] | null
+}
+
+export type SceneDebugOptions = {
+  showBBoxes: boolean
+  showCentroids: boolean
+  showApproxRegion: boolean
+  showExactPoints: boolean
+}
+
+export type SceneDisplayMode = "normal" | "ghost" | "isolate"
+export type SceneColorMode = "natural" | "class" | "instance" | "confidence" | "support"
+export type CameraPreset = "overview" | "top" | "reset" | "focus"
+
+export type CameraCommand = {
+  preset: CameraPreset
+  nonce: number
+}
+
+export type ExactObjectHighlight = {
+  trackId: number
+  label: string
+  pointCount: number
+  sampledPointCount: number
+  sampledPoints: [number, number, number][]
 }
 
 type ResolvedSceneAsset = {
@@ -27,16 +55,32 @@ export interface HomeSceneViewerProps {
   glbUrl: string
   sceneVersion?: string
   objects: ObjectItem[]
+  mode?: "default" | "annotator"
   path?: { x: number; z: number }[]
   currentStepIndex?: number
   targetLabel?: string
   height?: number
   className?: string
+  focusedObjectId?: string | null
+  selectedObjectIds?: string[]
+  hoveredObjectId?: string | null
+  displayMode?: SceneDisplayMode
+  colorMode?: SceneColorMode
+  cameraCommand?: CameraCommand | null
+  onObjectActivate?: (objectId: string, options?: { additive?: boolean }) => void
+  onObjectHover?: (objectId: string | null) => void
+  debugOptions?: Partial<SceneDebugOptions>
 }
 
 const sceneAssetCache = new Map<string, Promise<ResolvedSceneAsset>>()
 const sceneObjectUrlCache = new Map<string, ResolvedSceneAsset>()
 const LOCAL_SCENE_BROWSER_CACHE = "wayfr-local-scenes-v1"
+const DEFAULT_DEBUG_OPTIONS: SceneDebugOptions = {
+  showBBoxes: false,
+  showCentroids: false,
+  showApproxRegion: false,
+  showExactPoints: false,
+}
 
 const Scene = dynamic(() => import("./HomeSceneInner").then((m) => m.HomeSceneInner), {
   ssr: false,
@@ -108,7 +152,7 @@ async function resolveSceneAsset(homeId: string | undefined, glbUrl: string, sce
         sceneObjectUrlCache.set(cacheKey, asset)
         return asset
       } catch {
-        // Fall through to backend scene URL when the local file is unavailable.
+        // Fall back to the backend scene URL when the local file is unavailable.
       }
     }
 
@@ -137,12 +181,23 @@ export function HomeSceneViewer({
   glbUrl,
   sceneVersion,
   objects,
+  mode = "default",
   path,
   currentStepIndex,
   targetLabel,
   height = 400,
   className,
+  focusedObjectId = null,
+  selectedObjectIds = [],
+  hoveredObjectId = null,
+  displayMode = "normal",
+  colorMode = "natural",
+  cameraCommand = null,
+  onObjectActivate,
+  onObjectHover,
+  debugOptions,
 }: HomeSceneViewerProps) {
+  const mergedDebugOptions = useMemo(() => ({ ...DEFAULT_DEBUG_OPTIONS, ...debugOptions }), [debugOptions])
   const sceneKey = useMemo(
     () => buildSceneCacheKey(homeId, glbUrl, sceneVersion),
     [glbUrl, homeId, sceneVersion]
@@ -160,11 +215,24 @@ export function HomeSceneViewer({
     key: sceneKey,
     count: 0,
   })
+  const [exactHighlightState, setExactHighlightState] = useState<{
+    key: string
+    data: ExactObjectHighlight | null
+    unavailable: boolean
+  }>({
+    key: "",
+    data: null,
+    unavailable: false,
+  })
 
   const navActive = !!path && path.length > 0
   const resolvedScene = sceneState.key === sceneKey ? sceneState.asset : null
   const glbFailed = sceneState.key === sceneKey ? sceneState.failed : false
   const vertexCount = vertexState.key === sceneKey ? vertexState.count : 0
+  const focusedObject = useMemo(
+    () => objects.find((object) => object.id === focusedObjectId) ?? null,
+    [focusedObjectId, objects]
+  )
 
   const handlePointCount = useCallback(
     (count: number) => {
@@ -172,7 +240,6 @@ export function HomeSceneViewer({
         if (current.key === sceneKey && current.count === count) {
           return current
         }
-
         return { key: sceneKey, count }
       })
     },
@@ -181,8 +248,7 @@ export function HomeSceneViewer({
 
   const handleGlbError = useCallback(() => {
     setSceneState((current) => {
-      if (current.key !== sceneKey) return current
-      if (current.failed) return current
+      if (current.key !== sceneKey || current.failed) return current
       return { ...current, failed: true }
     })
   }, [sceneKey])
@@ -217,28 +283,104 @@ export function HomeSceneViewer({
     }
   }, [glbUrl, homeId, sceneKey, sceneVersion])
 
+  useEffect(() => {
+    const trackId = focusedObject?.track_id
+    const highlightKey = homeId && trackId != null ? `${sceneKey}:${trackId}` : ""
+
+    if (mode !== "annotator" || !mergedDebugOptions.showExactPoints || !homeId || trackId == null) {
+      return
+    }
+
+    let cancelled = false
+    void fetch(`${API_URL}/api/homes/${homeId}/object-highlights/${trackId}?sample_limit=1024`, {
+      cache: "force-cache",
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Failed to load exact highlight (${response.status})`)
+        }
+
+        const payload = await response.json()
+        const sampledPoints = Array.isArray(payload.sampled_points)
+          ? payload.sampled_points
+              .map((point: unknown) => {
+                if (!Array.isArray(point) || point.length < 3) return null
+                return [Number(point[0]), Number(point[1]), Number(point[2])] as [number, number, number]
+              })
+              .filter((point: [number, number, number] | null): point is [number, number, number] => point !== null)
+          : []
+
+        if (!cancelled) {
+          setExactHighlightState({
+            key: highlightKey,
+            unavailable: false,
+            data: {
+              trackId,
+              label: String(payload.label ?? focusedObject?.label ?? ""),
+              pointCount: Number(payload.point_count ?? sampledPoints.length),
+              sampledPointCount: Number(payload.sampled_point_count ?? sampledPoints.length),
+              sampledPoints,
+            },
+          })
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setExactHighlightState({
+            key: highlightKey,
+            data: null,
+            unavailable: true,
+          })
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [focusedObject?.id, focusedObject?.label, focusedObject?.track_id, homeId, mergedDebugOptions.showExactPoints, mode, sceneKey])
+
+  const exactHighlight =
+    exactHighlightState.key === (homeId && focusedObject?.track_id != null ? `${sceneKey}:${focusedObject.track_id}` : "")
+      ? exactHighlightState.data
+      : null
+
   return (
     <div
       className={cn("relative", className)}
       style={{ width: "100%", height, position: "relative", borderRadius: 8, overflow: "hidden" }}
     >
-      {resolvedScene?.url && (
+      {resolvedScene?.url ? (
         <Scene
           glbUrl={resolvedScene.url}
           objects={objects}
+          mode={mode}
           path={path}
           currentStepIndex={currentStepIndex ?? 0}
           targetLabel={targetLabel}
+          focusedObjectId={focusedObjectId}
+          selectedObjectIds={selectedObjectIds}
+          hoveredObjectId={hoveredObjectId}
+          displayMode={displayMode}
+          colorMode={colorMode}
+          cameraCommand={cameraCommand}
+          onObjectActivate={onObjectActivate}
+          onObjectHover={onObjectHover}
+          debugOptions={mergedDebugOptions}
+          exactHighlight={exactHighlight}
           onPointCount={handlePointCount}
           onGlbError={handleGlbError}
         />
-      )}
+      ) : null}
 
       <div className="pointer-events-none absolute bottom-3 left-3 z-20 rounded-full border border-white/10 bg-black/45 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-white/72 backdrop-blur-xl">
         {vertexCount > 0 ? `${vertexCount.toLocaleString()} verts` : glbFailed ? "scene unavailable" : "loading room mesh"}
         {" · "}
-        {objects.length} annotations
-        {navActive ? " · navigation" : " · orbit"}
+        {objects.length} visible
+        {" · "}
+        {displayMode}
+        {" · "}
+        {colorMode}
+        {navActive ? " · navigation" : " · explore"}
       </div>
     </div>
   )

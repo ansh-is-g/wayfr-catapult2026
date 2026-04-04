@@ -13,13 +13,20 @@ from __future__ import annotations
 import base64
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
 from core.logging import get_logger
 from db.repositories import homes as homes_repo
 from services.home_setup.modal_clients import call_localize
-from services.home_setup.pipeline import get_reference_tar, get_scene_glb, run_home_setup
+from services.home_setup.pipeline import (
+    get_object_evidence,
+    get_object_evidence_frame_path,
+    get_object_highlight,
+    get_reference_tar,
+    get_scene_glb,
+    run_home_setup,
+)
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/homes", tags=["homes"])
@@ -134,6 +141,55 @@ async def get_scene(home_id: str):
         media_type="model/gltf-binary",
         headers={"Cache-Control": "public, max-age=86400"},
     )
+
+
+@router.get("/{home_id}/object-highlights/{track_id}")
+async def get_object_highlight_points(home_id: str, track_id: int, sample_limit: int = 768):
+    home = await homes_repo.get(home_id)
+    if home is None:
+        raise HTTPException(status_code=404, detail=f"Home '{home_id}' not found")
+    if home.status != "ready":
+        raise HTTPException(status_code=409, detail=f"Home not ready (status={home.status})")
+
+    payload = await get_object_highlight(home_id, track_id, sample_limit=sample_limit)
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Exact object highlight not found for this track")
+
+    return payload
+
+
+@router.get("/{home_id}/object-evidence/{track_id}")
+async def get_object_evidence_payload(home_id: str, track_id: int):
+    home = await homes_repo.get(home_id)
+    if home is None:
+        raise HTTPException(status_code=404, detail=f"Home '{home_id}' not found")
+    if home.status != "ready":
+        raise HTTPException(status_code=409, detail=f"Home not ready (status={home.status})")
+
+    payload = await get_object_evidence(home_id, track_id)
+    if payload is None:
+        return {
+            "track_id": int(track_id),
+            "frames": [],
+            "message": "No supporting frames are stored for this object yet.",
+        }
+
+    return payload
+
+
+@router.get("/{home_id}/object-evidence/{track_id}/frames/{sampled_frame_idx}")
+async def get_object_evidence_frame(home_id: str, track_id: int, sampled_frame_idx: int):
+    home = await homes_repo.get(home_id)
+    if home is None:
+        raise HTTPException(status_code=404, detail=f"Home '{home_id}' not found")
+    if home.status != "ready":
+        raise HTTPException(status_code=409, detail=f"Home not ready (status={home.status})")
+
+    asset_path = get_object_evidence_frame_path(home_id, track_id, sampled_frame_idx)
+    if asset_path is None:
+        raise HTTPException(status_code=404, detail="Supporting frame not found")
+
+    return FileResponse(asset_path, media_type="image/jpeg")
 
 
 @router.post("/{home_id}/localize")

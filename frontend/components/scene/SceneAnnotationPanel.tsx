@@ -13,11 +13,15 @@ interface SceneAnnotationPanelProps {
   visibleObjects: ObjectItem[]
   query: string
   hiddenLabels: string[]
+  selectedObjectId?: string | null
+  hoveredObjectId?: string | null
   onQueryChange: (value: string) => void
   onToggleLabel: (label: string) => void
   onSelectAll: () => void
   onUnselectAll: () => void
   onReset: () => void
+  onObjectSelect?: (objectId: string | null) => void
+  onObjectHover?: (objectId: string | null) => void
   className?: string
 }
 
@@ -26,11 +30,15 @@ export function SceneAnnotationPanel({
   visibleObjects,
   query,
   hiddenLabels,
+  selectedObjectId,
+  hoveredObjectId,
   onQueryChange,
   onToggleLabel,
   onSelectAll,
   onUnselectAll,
   onReset,
+  onObjectSelect,
+  onObjectHover,
   className,
 }: SceneAnnotationPanelProps) {
   const uniqueLabels = Array.from(
@@ -100,25 +108,50 @@ export function SceneAnnotationPanel({
 
         <div className="space-y-2">
           {visibleObjects.length > 0 ? (
-            visibleObjects.slice(0, 8).map((object) => (
-              <div
-                key={object.id}
-                className="rounded-2xl border border-border/60 bg-background/44 px-3 py-3 backdrop-blur-xl"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium capitalize text-foreground">{object.label}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      x={object.x.toFixed(2)} y={object.y.toFixed(2)} z={object.z.toFixed(2)}
-                    </p>
+            visibleObjects.slice(0, 12).map((object) => {
+              const isSelected = selectedObjectId === object.id
+              const isHovered = hoveredObjectId === object.id
+
+              return (
+                <button
+                  key={object.id}
+                  type="button"
+                  onClick={() => onObjectSelect?.(isSelected ? null : object.id)}
+                  onMouseEnter={() => onObjectHover?.(object.id)}
+                  onMouseLeave={() => onObjectHover?.(null)}
+                  onFocus={() => onObjectHover?.(object.id)}
+                  onBlur={() => onObjectHover?.(null)}
+                  className={cn(
+                    "w-full rounded-2xl border px-3 py-3 text-left backdrop-blur-xl transition-colors",
+                    isSelected
+                      ? "border-mango/40 bg-mango/10"
+                      : isHovered
+                        ? "border-sky-300/35 bg-sky-300/8"
+                        : "border-border/60 bg-background/44"
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate font-medium capitalize text-foreground">{object.label}</p>
+                        {isSelected ? (
+                          <span className="rounded-full border border-mango/35 bg-mango/12 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-mango">
+                            Selected
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        x={object.x.toFixed(2)} y={object.y.toFixed(2)} z={object.z.toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="text-right text-xs text-muted-foreground">
+                      <p>{object.n_observations} frames</p>
+                      {object.confidence != null && <p>{Math.round(object.confidence * 100)}%</p>}
+                    </div>
                   </div>
-                  <div className="text-right text-xs text-muted-foreground">
-                    <p>{object.n_observations} frames</p>
-                    {object.confidence != null && <p>{Math.round(object.confidence * 100)}%</p>}
-                  </div>
-                </div>
-              </div>
-            ))
+                </button>
+              )
+            })
           ) : (
             <div className="rounded-2xl border border-border/60 bg-background/35 px-4 py-6 text-sm text-muted-foreground">
               No annotations match the current filter.

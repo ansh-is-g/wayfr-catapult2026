@@ -223,6 +223,7 @@ def _extract_frames(
     video_bytes: bytes,
     tmpdir: str,
     target_fps: int,
+    max_frame_side: int | None = None,
 ) -> tuple[str, list[str], float, list[int]]:
     import cv2
 
@@ -244,6 +245,16 @@ def _extract_frames(
         if not ret:
             break
         if raw_idx % frame_interval == 0:
+            if max_frame_side is not None and max_frame_side > 0:
+                h, w = frame.shape[:2]
+                m = max(h, w)
+                if m > max_frame_side:
+                    scale = max_frame_side / float(m)
+                    frame = cv2.resize(
+                        frame,
+                        (int(w * scale), int(h * scale)),
+                        interpolation=cv2.INTER_AREA,
+                    )
             cv2.imwrite(os.path.join(frames_dir, f"{idx:05d}.jpg"), frame)
             source_indices.append(raw_idx)
             idx += 1
@@ -251,9 +262,10 @@ def _extract_frames(
     cap.release()
 
     frame_names = sorted(f for f in os.listdir(frames_dir) if f.endswith(".jpg"))
+    side_note = f", max_side={max_frame_side}" if max_frame_side else ""
     print(
         f"Extracted {len(frame_names)} frames from {raw_idx} total "
-        f"at {fps:.1f} fps (target_fps={target_fps}, interval={frame_interval})"
+        f"at {fps:.1f} fps (target_fps={target_fps}, interval={frame_interval}{side_note})"
     )
     return frames_dir, frame_names, fps, source_indices
 
@@ -559,7 +571,7 @@ def _get_sam2_masks(image_np, boxes):
 # ---------------------------------------------------------------------------
 
 def _unload_models():
-    """Free all cached detection models from GPU before video tracking."""
+    """Free Grounding DINO + SAM2 image weights from GPU before video tracking."""
     import gc
     import torch
 
@@ -567,8 +579,12 @@ def _unload_models():
     _SAM2_IMAGE_CACHE.clear()
     gc.collect()
     if torch.cuda.is_available():
+        torch.cuda.synchronize()
         torch.cuda.empty_cache()
-    print(f"GPU memory after cleanup: {torch.cuda.memory_allocated() / 1024**3:.1f} GiB allocated")
+    if torch.cuda.is_available():
+        print(
+            f"GPU memory after cleanup: {torch.cuda.memory_allocated() / 1024**3:.1f} GiB allocated"
+        )
 
 
 def _track_video(
@@ -586,7 +602,14 @@ def _track_video(
         torch.backends.cudnn.allow_tf32 = True
 
     video_predictor = build_sam2_video_predictor(SAM2_MODEL_CFG, f"/opt/sam2_checkpoints/{SAM2_CHECKPOINT}")
-    inference_state = video_predictor.init_state(video_path=frames_dir)
+    # Keep decoded frames / state on CPU so the video backbone has headroom on GPU.
+    offload_video = _bool_env("GSAM2_OFFLOAD_VIDEO_TO_CPU", True)
+    offload_state = _bool_env("GSAM2_OFFLOAD_STATE_TO_CPU", True)
+    inference_state = video_predictor.init_state(
+        video_path=frames_dir,
+        offload_video_to_cpu=offload_video,
+        offload_state_to_cpu=offload_state,
+    )
 
     id_to_meta: dict[int, dict] = {}
     for object_id, seed in enumerate(seed_objects, start=1):
@@ -611,6 +634,8 @@ def _track_video(
             out_obj_id: (out_mask_logits[i] > 0.0).cpu().numpy()
             for i, out_obj_id in enumerate(out_obj_ids)
         }
+        # Drop GPU references to logits as we go (helps peak VRAM on long clips / many objects).
+        del out_mask_logits
 
     print(f"Propagated tracking across {len(video_segments)} frames")
 
@@ -1073,6 +1098,8 @@ def track_objects(
     text_threshold = float(os.getenv("GSAM2_TEXT_THRESHOLD", str(DEFAULT_TEXT_THRESHOLD)))
     target_fps = max(1, int(os.getenv("GSAM2_TARGET_FPS", str(DEFAULT_TARGET_FPS))))
     keyframe_stride = int(os.getenv("GSAM2_KEYFRAME_STRIDE", str(DEFAULT_KEYFRAME_STRIDE)))
+    max_frame_side_raw = os.getenv("GSAM2_MAX_FRAME_SIDE", "").strip()
+    max_frame_side = int(max_frame_side_raw) if max_frame_side_raw else 1280
     stage_times: dict[str, float] = {}
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -1082,6 +1109,7 @@ def track_objects(
             video_bytes,
             tmpdir,
             target_fps,
+            max_frame_side=max_frame_side,
         )
         stage_times["extract_frames_sec"] = round(time.perf_counter() - t0, 3)
         if not frame_names:
@@ -1207,6 +1235,7 @@ def track_objects(
             "box_threshold": box_threshold,
             "text_threshold": text_threshold,
             "target_fps": target_fps,
+            "max_frame_side": max_frame_side,
             "keyframe_stride": keyframe_stride,
             "keyframes_used": [source_indices[idx] for idx in keyframes],
             "sampled_keyframes_used": keyframes,

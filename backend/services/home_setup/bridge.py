@@ -76,6 +76,54 @@ def summarize_scene_objects(scene_objects: list[dict[str, Any]]) -> list[dict[st
     ]
 
 
+def build_scene_highlight_samples(
+    glb_bytes: bytes,
+    scene_objects: list[dict[str, Any]],
+    *,
+    sample_limit: int = 1536,
+) -> dict[str, Any]:
+    """Build a lightweight per-object highlight artifact from exact bridge points.
+
+    The bridge internally computes exact object membership as `point_indices`.
+    For frontend rendering we keep the payload smaller by storing a deterministic
+    sample of those points in GLB space, plus the exact point count.
+    """
+    points, _ = load_glb_points(glb_bytes)
+    objects_payload: list[dict[str, Any]] = []
+
+    for obj in scene_objects:
+        point_indices = np.array(obj.get("point_indices") or [], dtype=np.int64)
+        if len(point_indices) == 0:
+            continue
+
+        step = max(1, int(np.ceil(len(point_indices) / max(sample_limit, 1))))
+        sampled_indices = point_indices[::step][:sample_limit]
+        sampled_points = points[sampled_indices]
+
+        objects_payload.append(
+            {
+                "track_id": int(obj["track_id"]),
+                "label": str(obj["label"]),
+                "source": "bridge_point_indices",
+                "point_count": int(len(point_indices)),
+                "sampled_point_count": int(len(sampled_indices)),
+                "centroid_3d": [round(float(v), 4) for v in obj["centroid_3d"]],
+                "bbox_3d_min": [round(float(v), 4) for v in obj["bbox_3d_min"]],
+                "bbox_3d_max": [round(float(v), 4) for v in obj["bbox_3d_max"]],
+                "sampled_points": [
+                    [round(float(pt[0]), 4), round(float(pt[1]), 4), round(float(pt[2]), 4)]
+                    for pt in sampled_points
+                ],
+            }
+        )
+
+    return {
+        "version": 1,
+        "sample_limit": int(sample_limit),
+        "objects": objects_payload,
+    }
+
+
 _BRIDGE_LABEL_SYNONYMS: dict[str, str] = {
     "screen": "monitor",
     "display": "monitor",
