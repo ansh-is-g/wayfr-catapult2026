@@ -258,8 +258,11 @@ function AnnotationRow({
 
       {/* Label */}
       <span
-        className="flex-1 truncate text-[11px] font-medium leading-tight transition-colors"
-        style={{ color: isActive ? accent : isHovered ? "rgba(255,255,255,0.88)" : "rgba(255,255,255,0.72)" }}
+        className={cn(
+          "flex-1 truncate text-[11px] font-medium leading-tight transition-colors",
+          !isActive && (isHovered ? "text-foreground/85 dark:text-white/88" : "text-foreground/70 dark:text-white/72")
+        )}
+        style={isActive ? { color: accent } : undefined}
       >
         {annotation.personaLabel}
         {annotation.isNew && (
@@ -309,16 +312,16 @@ function AnnotationPicker({
   const hasMore = annotations.length > VISIBLE_COUNT
 
   return (
-    <div className="w-60 overflow-hidden rounded-2xl border border-white/10 bg-black/65 shadow-2xl backdrop-blur-2xl">
+    <div className="w-60 overflow-hidden rounded-2xl border border-black/10 bg-white/85 shadow-2xl backdrop-blur-2xl dark:border-white/10 dark:bg-black/65">
       {/* Header */}
       <button
         type="button"
         onClick={() => setCollapsed((c) => !c)}
-        className="flex w-full items-center justify-between px-3 py-2.5 transition-colors hover:bg-white/5"
+        className="flex w-full items-center justify-between px-3 py-2.5 transition-colors hover:bg-black/5 dark:hover:bg-white/5"
       >
         <div className="flex items-center gap-2">
           <Layers className="h-3 w-3 text-mango/80" />
-          <span className="text-[11px] font-semibold text-white/90">Annotations</span>
+          <span className="text-[11px] font-semibold text-foreground/90 dark:text-white/90">Annotations</span>
           {criticalCount > 0 && (
             <span className="flex items-center gap-0.5 rounded-full bg-red-500/20 px-1.5 py-0.5 text-[8px] font-bold text-red-400">
               <AlertTriangle className="h-2 w-2" />
@@ -332,13 +335,13 @@ function AnnotationPicker({
           )}
         </div>
         {collapsed
-          ? <ChevronDown className="h-3.5 w-3.5 text-white/30" />
-          : <ChevronUp className="h-3.5 w-3.5 text-white/30" />
+          ? <ChevronDown className="h-3.5 w-3.5 text-foreground/30 dark:text-white/30" />
+          : <ChevronUp className="h-3.5 w-3.5 text-foreground/30 dark:text-white/30" />
         }
       </button>
 
       {!collapsed && (
-        <div className="border-t border-white/8">
+        <div className="border-t border-black/8 dark:border-white/8">
           <div className="max-h-[52vh] overflow-y-auto scrollbar-none">
             {visible.map((ann, i) => (
               <AnnotationRow
@@ -356,7 +359,7 @@ function AnnotationPicker({
             <button
               type="button"
               onClick={() => setShowAll((s) => !s)}
-              className="flex w-full items-center justify-center gap-1 border-t border-white/8 py-2 text-[10px] text-white/35 transition-colors hover:text-white/65"
+              className="flex w-full items-center justify-center gap-1 border-t border-black/8 py-2 text-[10px] text-foreground/35 transition-colors hover:text-foreground/65 dark:border-white/8 dark:text-white/35 dark:hover:text-white/65"
             >
               {showAll
                 ? <><ChevronUp className="h-2.5 w-2.5" /> Show less</>
@@ -501,7 +504,7 @@ export function PersonaSceneCard({ homeId, homeName, plan, objects }: PersonaSce
   const derivedCount = mergedAnnotations.filter((a) => a.isNew).length
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-[#07080d]">
+    <div className="relative h-full w-full overflow-hidden bg-[#f2ede4] dark:bg-[#07080d]">
 
       {/* ── 3D scene fills everything ── */}
       <div className="absolute inset-0">
@@ -528,14 +531,14 @@ export function PersonaSceneCard({ homeId, homeName, plan, objects }: PersonaSce
 
       {/* ── Top-left: identity badge ── */}
       <div className="pointer-events-none absolute left-4 top-4 z-10">
-        <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-white/10 bg-black/55 px-3 py-1.5 shadow-lg backdrop-blur-2xl">
+        <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-black/10 bg-white/80 px-3 py-1.5 shadow-lg backdrop-blur-2xl dark:border-white/10 dark:bg-black/55">
           <Layers className="h-3 w-3 shrink-0 text-mango" />
-          <span className="text-[11px] font-semibold text-white/90">{homeName}</span>
-          <span className="text-[10px] text-white/40">·</span>
-          <span className="text-[10px] text-white/55">{plan.personaRole}</span>
+          <span className="text-[11px] font-semibold text-foreground/90 dark:text-white/90">{homeName}</span>
+          <span className="text-[10px] text-foreground/40 dark:text-white/40">·</span>
+          <span className="text-[10px] text-foreground/55 dark:text-white/55">{plan.personaRole}</span>
           {derivedCount > 0 && (
             <>
-              <span className="text-[10px] text-white/30">·</span>
+              <span className="text-[10px] text-foreground/30 dark:text-white/30">·</span>
               <span className="flex items-center gap-0.5 text-[9px] text-mango/70">
                 <Sparkles className="h-2 w-2" />
                 {derivedCount} custom
@@ -561,8 +564,8 @@ export function PersonaSceneCard({ homeId, homeName, plan, objects }: PersonaSce
 
       {/* ── Bottom-left: plan summary ── */}
       <div className="pointer-events-none absolute bottom-20 left-4 z-10 max-w-[340px]">
-        <div className="rounded-xl border border-white/8 bg-black/50 px-3 py-1.5 backdrop-blur-xl">
-          <p className="text-[10px] leading-relaxed text-white/55">{plan.summary}</p>
+        <div className="rounded-xl border border-black/8 bg-white/80 px-3 py-1.5 backdrop-blur-xl dark:border-white/8 dark:bg-black/50">
+          <p className="text-[10px] leading-relaxed text-foreground/55 dark:text-white/55">{plan.summary}</p>
         </div>
       </div>
 
@@ -576,7 +579,7 @@ export function PersonaSceneCard({ homeId, homeName, plan, objects }: PersonaSce
         <button
           type="button"
           onClick={handleOverview}
-          className="pointer-events-auto flex items-center gap-1.5 rounded-full border border-white/15 bg-black/55 px-3 py-1.5 text-[10px] font-medium text-white/65 backdrop-blur-xl transition-colors hover:border-white/30 hover:text-white/90"
+          className="pointer-events-auto flex items-center gap-1.5 rounded-full border border-black/15 bg-white/80 px-3 py-1.5 text-[10px] font-medium text-foreground/65 backdrop-blur-xl transition-colors hover:border-black/30 hover:text-foreground/90 dark:border-white/15 dark:bg-black/55 dark:text-white/65 dark:hover:border-white/30 dark:hover:text-white/90"
         >
           Overview
         </button>

@@ -6,6 +6,8 @@ import { GizmoHelper, GizmoViewport, Html, OrbitControls } from "@react-three/dr
 import * as THREE from "three"
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib"
 
+import { useTheme } from "next-themes"
+
 import { ChaseCamera } from "./ChaseCamera"
 import { GlbSceneModel, type SceneFocusRegion } from "./GlbSceneModel"
 import { NavigationPath } from "./NavigationPath"
@@ -20,7 +22,8 @@ import type {
   SceneDisplayMode,
 } from "./HomeSceneViewer"
 
-const BG = "#0a0a0f"
+const BG_DARK = "#0a0a0f"
+const BG_LIGHT = "#f2ede4"
 const SELECTED_ACCENT = 0xf6b54c
 const HOVER_ACCENT = 0x8fd8ff
 
@@ -148,16 +151,21 @@ function FocusCallout({
   color,
   tone,
   labelOverride,
+  isDark = true,
 }: {
   obj: ObjectItem
   meta: ObjectFocusMeta
   color: number
   tone: "selected" | "hover"
   labelOverride?: string
+  isDark?: boolean
 }) {
   const hex = `#${color.toString(16).padStart(6, "0")}`
   const displayLabel = labelOverride ?? obj.label
   const showOriginal = labelOverride && labelOverride !== obj.label
+  const bgBase = isDark ? "8,10,15" : "242,237,228"
+  const textColor = isDark ? "#fff7ea" : "#1a1208"
+  const subTextColor = isDark ? "rgba(255,247,234,0.45)" : "rgba(26,18,8,0.45)"
 
   return (
     <Html center position={meta.labelPosition} distanceFactor={11} occlude={false} style={{ pointerEvents: "none" }}>
@@ -180,15 +188,17 @@ function FocusCallout({
             border: `1px solid ${hex}55`,
             background:
               tone === "selected"
-                ? `linear-gradient(180deg, rgba(8,10,15,0.92), ${hex}35)`
-                : `linear-gradient(180deg, rgba(8,10,15,0.76), ${hex}1b)`,
-            boxShadow: tone === "selected" ? `0 18px 46px rgba(0,0,0,0.38), 0 0 20px ${hex}22` : "0 12px 32px rgba(0,0,0,0.28)",
+                ? `linear-gradient(180deg, rgba(${bgBase},0.92), ${hex}35)`
+                : `linear-gradient(180deg, rgba(${bgBase},0.76), ${hex}1b)`,
+            boxShadow: tone === "selected"
+              ? `0 18px 46px rgba(0,0,0,${isDark ? "0.38" : "0.14"}), 0 0 20px ${hex}22`
+              : `0 12px 32px rgba(0,0,0,${isDark ? "0.28" : "0.10"})`,
             backdropFilter: "blur(18px)",
             whiteSpace: "nowrap",
             fontFamily: "monospace",
             fontSize: tone === "selected" ? "12px" : "10px",
             lineHeight: "1.4",
-            color: "#fff7ea",
+            color: textColor,
           }}
         >
           {tone === "selected" && (
@@ -203,11 +213,11 @@ function FocusCallout({
           <div style={{
             padding: "2px 8px",
             borderRadius: "999px",
-            background: "rgba(8,10,15,0.72)",
+            background: `rgba(${bgBase},0.72)`,
             backdropFilter: "blur(12px)",
             fontFamily: "monospace",
             fontSize: "9px",
-            color: "rgba(255,247,234,0.45)",
+            color: subTextColor,
             whiteSpace: "nowrap",
           }}>
             {obj.label}
@@ -222,13 +232,17 @@ function PersonaAmbientCallout({
   meta,
   annotation,
   isFocused,
+  isDark = true,
 }: {
   meta: ObjectFocusMeta
   annotation: PersonaAmbientAnnotation
   isFocused: boolean
+  isDark?: boolean
 }) {
   // Don't render when the object is focused — FocusCallout takes over
   if (isFocused) return null
+
+  const bgBase = isDark ? "8,10,15" : "242,237,228"
 
   return (
     <Html
@@ -246,14 +260,14 @@ function PersonaAmbientCallout({
           padding: "3px 9px 3px 7px",
           borderRadius: "999px",
           border: `1px solid ${annotation.color}40`,
-          background: `linear-gradient(180deg, rgba(8,10,15,0.80), ${annotation.color}18)`,
+          background: `linear-gradient(180deg, rgba(${bgBase},0.80), ${annotation.color}18)`,
           backdropFilter: "blur(14px)",
           whiteSpace: "nowrap",
           fontFamily: "monospace",
           fontSize: "9px",
           lineHeight: "1.4",
           color: annotation.color,
-          boxShadow: `0 8px 24px rgba(0,0,0,0.30)`,
+          boxShadow: `0 8px 24px rgba(0,0,0,${isDark ? "0.30" : "0.12"})`,
         }}
       >
         <span style={{
@@ -537,6 +551,7 @@ function AnnotatorSelectionLayer({
   displayMode,
   colorMode,
   labelMap,
+  isDark = true,
 }: {
   objects: ObjectItem[]
   focusedObjectId: string | null
@@ -550,6 +565,7 @@ function AnnotatorSelectionLayer({
   displayMode: SceneDisplayMode
   colorMode: SceneColorMode
   labelMap?: Record<string, string>
+  isDark?: boolean
 }) {
   const objectById = useMemo(() => new Map(objects.map((object) => [object.id, object])), [objects])
   const selectedSet = useMemo(() => new Set(selectedObjectIds), [selectedObjectIds])
@@ -627,6 +643,7 @@ function AnnotatorSelectionLayer({
             color={HOVER_ACCENT}
             tone="hover"
             labelOverride={labelMap?.[hoveredObject.id]}
+            isDark={isDark}
           />
         </>
       ) : null}
@@ -638,6 +655,7 @@ function AnnotatorSelectionLayer({
           color={SELECTED_ACCENT}
           tone="selected"
           labelOverride={labelMap?.[focusedObject.id]}
+          isDark={isDark}
         />
       ) : null}
 
@@ -692,6 +710,8 @@ function SceneContent({
   onObjectHover,
   debugOptions,
   exactHighlight,
+  bg,
+  isDark,
   exactSelectionHighlight,
   onPointCount,
   onGlbError,
@@ -719,6 +739,8 @@ function SceneContent({
   onGlbError: () => void
   labelMap?: Record<string, string>
   personaAmbientAnnotations?: PersonaAmbientAnnotation[]
+  bg: string
+  isDark: boolean
 }) {
   const navActive = !!path && path.length > 0
   const targetLower = targetLabel?.toLowerCase()
@@ -747,7 +769,7 @@ function SceneContent({
       <hemisphereLight intensity={0.72} color={0xf6efe6} groundColor={0x3a2e24} />
       <directionalLight position={[6, 8, 4]} intensity={0.75} color={0xfff5e8} castShadow />
       <directionalLight position={[-4, 3, -6]} intensity={0.22} color={0xc8d8ff} />
-      <fog attach="fog" args={[BG, 18, 52]} />
+      <fog attach="fog" args={[bg, 18, 52]} />
 
       <SceneGrid objects={objects} />
 
@@ -776,6 +798,7 @@ function SceneContent({
           displayMode={displayMode}
           colorMode={colorMode}
           labelMap={labelMap}
+          isDark={isDark}
         />
       ) : (
         objects.map((object, index) => (
@@ -799,6 +822,7 @@ function SceneContent({
             meta={meta}
             annotation={ann}
             isFocused={focusedObjectId === ann.objectId}
+            isDark={isDark}
           />
         )
       })}
@@ -858,17 +882,20 @@ export function HomeSceneInner({
   labelMap,
   personaAmbientAnnotations,
 }: HomeSceneInnerProps) {
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme !== "light"
+  const bg = isDark ? BG_DARK : BG_LIGHT
   const [canvasReady, setCanvasReady] = useState(false)
 
   return (
-    <div className="h-full w-full bg-[#05070c]">
+    <div className="h-full w-full" style={{ backgroundColor: bg }}>
       <Canvas
         camera={{ position: [-2.4, 3.2, -2.8], fov: 48, near: 0.01, far: 1000 }}
         gl={{ antialias: true }}
         dpr={[1, 2]}
         onCreated={() => setCanvasReady(true)}
       >
-        <color attach="background" args={[BG]} />
+        <color attach="background" args={[bg]} />
         {canvasReady ? (
           <SceneContent
             glbUrl={glbUrl}
@@ -892,6 +919,8 @@ export function HomeSceneInner({
             onGlbError={onGlbError}
             labelMap={labelMap}
             personaAmbientAnnotations={personaAmbientAnnotations}
+            bg={bg}
+            isDark={isDark}
           />
         ) : null}
       </Canvas>

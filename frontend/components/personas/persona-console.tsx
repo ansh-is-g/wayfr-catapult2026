@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { SendHorizontal, Sparkles, Loader2 } from "lucide-react"
 
+import { HistoryPanel } from "@/components/personas/history-panel"
+import type { HistorySession } from "@/components/personas/history-panel"
 import { HomePicker } from "@/components/personas/home-picker"
 import { PersonaEditor } from "@/components/personas/persona-editor"
 import { PersonaSceneCard } from "@/components/personas/persona-scene-card"
@@ -577,6 +579,49 @@ export function PersonaConsole() {
     setStage("follow_up")
   }, [])
 
+  // ── Load a past session from history ──────────────────────────────────────
+
+  const loadHistorySession = useCallback(async (session: HistorySession) => {
+    setStage("annotating")
+    setMessages([])
+    try {
+      const objRes = await fetch(`${API_URL}/api/homes/${session.homeId}/objects`, {
+        cache: "no-store",
+      })
+      if (!objRes.ok) throw new Error(`Failed to load objects (${objRes.status})`)
+      const objData = (await objRes.json()) as { objects?: ObjectItem[] }
+      const objects: ObjectItem[] = (objData.objects ?? []).map((o) => ({
+        ...o,
+        confidence: o.confidence ?? null,
+        n_observations: o.n_observations ?? 1,
+      }))
+      setSceneObjects(objects)
+      if (session.persona) setCurrentPersona(session.persona)
+      setMessages([
+        {
+          id: nanoid(),
+          role: "assistant",
+          type: "scene",
+          homeId: session.homeId,
+          homeName: session.homeName ?? session.homeId,
+          plan: session.plan,
+        } satisfies SceneMessage,
+      ])
+      setStage("ready")
+    } catch {
+      setMessages([
+        {
+          id: nanoid(),
+          role: "assistant",
+          type: "text",
+          text: "Failed to load that session. The scene may no longer be available.",
+          streaming: false,
+        } satisfies TextMessage,
+      ])
+      setStage("idle")
+    }
+  }, [])
+
   // ── Home selection ─────────────────────────────────────────────────────────
 
   const handleHomeSelect = useCallback(
@@ -639,6 +684,13 @@ export function PersonaConsole() {
             />
           </div>
         </div>
+
+        {/* History button — bottom-right, above the prompt */}
+        <div className="pointer-events-none absolute bottom-5 right-4 z-40">
+          <div className="pointer-events-auto">
+            <HistoryPanel onLoadSession={loadHistorySession} />
+          </div>
+        </div>
       </div>
     )
   }
@@ -646,12 +698,23 @@ export function PersonaConsole() {
   // ── Chat view ──────────────────────────────────────────────────────────────
 
   return (
-    <section className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-4 py-6 sm:px-6">
-      {/* Header: eyes (compact when active) */}
+    <div className="relative w-full">
+      {/* History button — always top-right of the chat column */}
+      <div className="absolute right-0 top-4 z-20 px-4 sm:px-6">
+        <HistoryPanel onLoadSession={loadHistorySession} />
+      </div>
+
+    <section
+      className={cn(
+        "mx-auto flex w-full max-w-3xl flex-col px-4 sm:px-6",
+        isActive ? "h-dvh py-4" : "min-h-screen py-6"
+      )}
+    >
+      {/* Header: eyes */}
       <div
         className={cn(
-          "flex w-full items-center justify-center transition-all duration-500",
-          isActive ? "mb-6 pt-2" : "flex-1 flex-col pb-0"
+          "flex w-full shrink-0 items-center transition-all duration-500",
+          isActive ? "mb-4 justify-center pt-2" : "flex-1 flex-col justify-center pb-0"
         )}
       >
         {!isActive && (
@@ -662,9 +725,9 @@ export function PersonaConsole() {
         <BlinkingEyes small={isActive} />
       </div>
 
-      {/* Message list */}
+      {/* Message list — scrollable */}
       {isActive && (
-        <div className="mb-6 flex flex-col gap-4">
+        <div className="flex flex-1 flex-col gap-4 overflow-y-auto pb-4">
           {messages.map((message) => {
             if (message.type === "text") {
               if (message.role === "user") {
@@ -725,8 +788,8 @@ export function PersonaConsole() {
         </div>
       )}
 
-      {/* Prompt box */}
-      <div className={cn("w-full", !isActive && "mt-10")}>
+      {/* Prompt box — pinned at bottom */}
+      <div className={cn("w-full shrink-0", !isActive && "mt-10")}>
         <PromptInput
           value={draft}
           onChange={setDraft}
@@ -747,6 +810,7 @@ export function PersonaConsole() {
         )}
       </div>
     </section>
+    </div>
   )
 }
 

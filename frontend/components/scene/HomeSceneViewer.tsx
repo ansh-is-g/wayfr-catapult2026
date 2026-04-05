@@ -409,7 +409,7 @@ export function HomeSceneViewer({
       ) : null}
 
       {showSceneBadge ? (
-        <div className="pointer-events-none absolute bottom-3 left-3 z-20 rounded-full border border-white/10 bg-black/45 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-white/72 backdrop-blur-xl">
+        <div className="pointer-events-none absolute bottom-3 left-3 z-20 rounded-full border border-black/10 bg-white/75 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-foreground/72 backdrop-blur-xl dark:border-white/10 dark:bg-black/45 dark:text-white/72">
           {vertexCount > 0 ? `${vertexCount.toLocaleString()} verts` : glbFailed ? "scene unavailable" : "loading room mesh"}
           {" · "}
           {objects.length} visible
