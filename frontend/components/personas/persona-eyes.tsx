@@ -1,7 +1,7 @@
 "use client"
 
 import type { CSSProperties } from "react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react"
 
 import { cn } from "@/lib/utils"
 
@@ -25,6 +25,10 @@ const DEFAULT_THEME: PersonaEyeTheme = {
   star: "#FFC45A",
   center: "#FFB347",
   glow: "rgba(255, 196, 90, 0.38)",
+}
+
+function subscribeToHydration() {
+  return () => {}
 }
 
 function PersonaEye({
@@ -66,6 +70,7 @@ export function PersonaEyes({
   autoBlink = true,
   colorTheme,
 }: PersonaEyesProps) {
+  const mounted = useSyncExternalStore(subscribeToHydration, () => true, () => false)
   const [autoBlinking, setAutoBlinking] = useState(false)
   const theme = useMemo(() => ({ ...DEFAULT_THEME, ...colorTheme }), [colorTheme])
 
@@ -102,6 +107,16 @@ export function PersonaEyes({
     "--persona-eye-gap": `${Math.max(10, Math.round(size * 0.16))}px`,
     "--persona-eye-glow": theme.glow,
   } as CSSProperties
+
+  if (!mounted) {
+    return (
+      <div
+        className={cn("persona-chat-eyes", className)}
+        style={style}
+        aria-hidden="true"
+      />
+    )
+  }
 
   return (
     <div

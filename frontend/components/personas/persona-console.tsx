@@ -636,7 +636,7 @@ export function PersonaConsole() {
     <section
       className={cn(
         "mx-auto flex w-full max-w-3xl flex-col px-4 sm:px-6",
-        isActive ? "h-dvh py-4" : "min-h-screen py-6"
+        isActive ? "min-h-[100dvh] py-4" : "min-h-screen py-6"
       )}
     >
       {/* Header: persona eyes */}
@@ -656,7 +656,7 @@ export function PersonaConsole() {
 
       {/* Message list — scrollable */}
       {isActive && (
-        <div className="flex flex-1 flex-col gap-4 overflow-y-auto pb-4">
+        <div className="flex flex-1 flex-col gap-4 pb-4">
           {messages.map((message) => {
             if (message.type === "text") {
               if (message.role === "user") {

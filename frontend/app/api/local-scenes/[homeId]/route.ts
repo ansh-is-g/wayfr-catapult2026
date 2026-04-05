@@ -35,7 +35,7 @@ export async function GET(
     return new NextResponse(bytes, {
       headers: {
         "Content-Type": "model/gltf-binary",
-        "Cache-Control": "public, max-age=86400, immutable",
+        "Cache-Control": "private, no-cache, max-age=0, must-revalidate",
       },
     })
   } catch {

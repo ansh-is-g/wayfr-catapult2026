@@ -95,7 +95,6 @@ export interface HomeSceneViewerProps {
 
 const sceneAssetCache = new Map<string, Promise<ResolvedSceneAsset>>()
 const sceneObjectUrlCache = new Map<string, ResolvedSceneAsset>()
-const LOCAL_SCENE_BROWSER_CACHE = "wayfr-local-scenes-v1"
 const DEFAULT_DEBUG_OPTIONS: SceneDebugOptions = {
   showBBoxes: false,
   showCentroids: false,
@@ -139,15 +138,9 @@ async function readLocalSceneAsObjectUrl(url: string) {
     throw new Error("Browser cache unavailable on server.")
   }
 
-  const cache = "caches" in window ? await window.caches.open(LOCAL_SCENE_BROWSER_CACHE) : null
-  let response = cache ? await cache.match(url) : undefined
-
-  if (!response) {
-    response = await fetch(url, { cache: "force-cache" })
-    if (!response.ok) {
-      throw new Error(`Failed to read local scene (${response.status})`)
-    }
-    await cache?.put(url, response.clone())
+  const response = await fetch(url, { cache: "no-store" })
+  if (!response.ok) {
+    throw new Error(`Failed to read local scene (${response.status})`)
   }
 
   const blob = await response.blob()
@@ -177,7 +170,7 @@ async function resolveSceneAsset(homeId: string | undefined, glbUrl: string, sce
       }
     }
 
-    const response = await fetch(glbUrl, { cache: "force-cache" })
+    const response = await fetch(glbUrl, { cache: "no-store" })
     if (!response.ok) {
       throw new Error(`Failed to load remote scene (${response.status})`)
     }
@@ -321,7 +314,7 @@ export function HomeSceneViewer({
 
     let cancelled = false
     void fetch(`${API_URL}/api/homes/${homeId}/object-highlights/${trackId}?sample_limit=1024`, {
-      cache: "force-cache",
+      cache: "no-store",
     })
       .then(async (response) => {
         if (!response.ok) {
