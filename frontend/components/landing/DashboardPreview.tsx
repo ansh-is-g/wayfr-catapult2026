@@ -24,11 +24,12 @@ export function DashboardPreview() {
 
         <div className="overflow-hidden rounded-[2rem] border border-border/60 bg-card/70 p-2 shadow-[0_32px_110px_rgba(0,0,0,0.14)] backdrop-blur-xl dark:shadow-[0_36px_120px_rgba(0,0,0,0.32)]">
           <Image
-            src="/hero.png"
+            src="/hero.svg"
             alt="wayfr hero preview"
             width={1600}
             height={1000}
             priority
+            unoptimized
             className="h-auto w-full rounded-[1.5rem] border border-black/5 object-cover dark:border-white/5"
           />
         </div>
