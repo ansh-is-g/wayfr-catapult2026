@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useTheme } from "next-themes"
 import { SignInButton, UserButton, useAuth } from "@clerk/nextjs"
-import { Bot, LayoutDashboard, Moon, ScanSearch, Sun } from "lucide-react"
+import { Bot, LayoutDashboard, Moon, ScanSearch, Store, Sun } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils"
 const navigation = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/personas", label: "Personas", icon: Bot },
+  { href: "/marketplace", label: "Marketplace", icon: Store },
   { href: "/setup", label: "Setup", icon: ScanSearch },
 ]
 

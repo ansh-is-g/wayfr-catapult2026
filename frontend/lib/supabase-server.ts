@@ -1,19 +1,26 @@
 import { createClient } from "@supabase/supabase-js"
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+const key =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY
 
-if (!supabaseUrl) {
+if (!url) {
   throw new Error("NEXT_PUBLIC_SUPABASE_URL is not set")
 }
-if (!serviceRoleKey) {
-  throw new Error("SUPABASE_SERVICE_ROLE_KEY is not set")
+if (!key) {
+  throw new Error(
+    "SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SERVICE_KEY) is not set"
+  )
 }
 
-/**
- * Server-only Supabase client using the service role key.
- * Bypasses RLS — only use in API route handlers, never in browser code.
- */
-export const supabaseServer = createClient(supabaseUrl, serviceRoleKey, {
+const client = createClient(url, key, {
   auth: { persistSession: false },
 })
+
+/** Lazy-style accessor used by marketplace routes. */
+export function getSupabase() {
+  return client
+}
+
+/** Direct export used by persona routes. */
+export const supabaseServer = client
