@@ -222,6 +222,22 @@ export default function DashboardPage() {
   const [homeLoading, setHomeLoading] = useState(false)
   const [homesError, setHomesError] = useState<string | null>(null)
   const [homeError, setHomeError] = useState<string | null>(null)
+  /** Home IDs that have `backend/data/scenes/<id>/scene.glb` (or SCENE_DATA_DIR); null = not loaded yet. */
+  const [localGlbHomeIds, setLocalGlbHomeIds] = useState<string[] | null>(null)
+
+  const loadLocalGlbHomeIds = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const response = await fetch("/api/local-scenes", { signal, cache: "no-store" })
+      if (!response.ok) {
+        throw new Error(`Failed to list local scenes (${response.status})`)
+      }
+      const data: { home_ids?: string[] } = await response.json()
+      setLocalGlbHomeIds(data.home_ids ?? [])
+    } catch {
+      if (signal?.aborted) return
+      setLocalGlbHomeIds([])
+    }
+  }, [])
 
   const loadHomes = useCallback(async (signal?: AbortSignal) => {
     setHomesError(null)
@@ -314,21 +330,39 @@ export default function DashboardPage() {
   }, [loadHomes])
 
   useEffect(() => {
+    const controller = new AbortController()
+    void loadLocalGlbHomeIds(controller.signal)
+    return () => controller.abort()
+  }, [loadLocalGlbHomeIds])
+
+  useEffect(() => {
     if (homes.length === 0) {
       setSelectedHomeId("")
       return
     }
 
-    if (requestedHomeId && homes.some((home) => home.home_id === requestedHomeId)) {
+    if (localGlbHomeIds === null) {
+      return
+    }
+
+    const eligibleIds = new Set(localGlbHomeIds)
+    const eligibleHomes = homes.filter((home) => eligibleIds.has(home.home_id))
+
+    if (eligibleHomes.length === 0) {
+      setSelectedHomeId("")
+      return
+    }
+
+    if (requestedHomeId && eligibleHomes.some((home) => home.home_id === requestedHomeId)) {
       setSelectedHomeId((current) => (current === requestedHomeId ? current : requestedHomeId))
       return
     }
 
     setSelectedHomeId((current) => {
-      if (current && homes.some((home) => home.home_id === current)) return current
-      return homes[0]?.home_id ?? ""
+      if (current && eligibleHomes.some((home) => home.home_id === current)) return current
+      return eligibleHomes[0]?.home_id ?? ""
     })
-  }, [homes, requestedHomeId])
+  }, [homes, requestedHomeId, localGlbHomeIds])
 
   useEffect(() => {
     setSelectedHome(null)
@@ -376,17 +410,23 @@ export default function DashboardPage() {
     })
   }, [homes])
 
+  const homesWithLocalGlb = useMemo(() => {
+    if (localGlbHomeIds === null) return []
+    const eligible = new Set(localGlbHomeIds)
+    return sortedHomes.filter((home) => eligible.has(home.home_id))
+  }, [sortedHomes, localGlbHomeIds])
+
   const filteredHomes = useMemo(() => {
     const query = historyQuery.trim().toLowerCase()
-    if (!query) return sortedHomes
-    return sortedHomes.filter((home) => {
+    if (!query) return homesWithLocalGlb
+    return homesWithLocalGlb.filter((home) => {
       return (
         home.name.toLowerCase().includes(query) ||
         home.home_id.toLowerCase().includes(query) ||
         home.status.toLowerCase().includes(query)
       )
     })
-  }, [historyQuery, sortedHomes])
+  }, [historyQuery, homesWithLocalGlb])
 
   const activeHome = useMemo(() => {
     if (selectedHome?.home_id === selectedHomeId) {
@@ -451,10 +491,11 @@ export default function DashboardPage() {
 
   const refreshAll = useCallback(() => {
     void loadHomes()
+    void loadLocalGlbHomeIds()
     if (selectedHomeId) {
       void loadSelectedHome(selectedHomeId)
     }
-  }, [loadHomes, loadSelectedHome, selectedHomeId])
+  }, [loadHomes, loadLocalGlbHomeIds, loadSelectedHome, selectedHomeId])
 
   const activateObject = useCallback((objectId: string, additive = false) => {
     setSelectedObjectIds((current) => {
@@ -529,7 +570,8 @@ export default function DashboardPage() {
 
   const showReadyScene = activeHome?.status === "ready" && !homeError
   const showSceneControls = showReadyScene
-  const showSideRail = homes.length > 0 && !homesError
+  const showSideRail =
+    homes.length > 0 && !homesError && (localGlbHomeIds === null || homesWithLocalGlb.length > 0)
 
   return (
     <div className="dark relative h-full min-h-0 overflow-hidden bg-[#030507] text-white">
@@ -609,6 +651,15 @@ export default function DashboardPage() {
         </div>
       ) : null}
 
+      {!homesLoading && homes.length > 0 && localGlbHomeIds !== null && homesWithLocalGlb.length === 0 && !homesError ? (
+        <div className="absolute inset-0 z-20 flex items-center justify-center p-4">
+          <StageStateCard
+            title="No local GLB scenes"
+            description="The scene switcher only lists homes that have scene.glb on disk (see backend/data/scenes or SCENE_DATA_DIR). Other API entries are hidden until the mesh is available locally."
+          />
+        </div>
+      ) : null}
+
       {showSideRail ? (
         <>
           <div className="pointer-events-none absolute inset-x-0 bottom-20 z-40 flex min-h-0 flex-col p-3 sm:inset-y-0 sm:right-0 sm:left-auto sm:h-full sm:w-[452px] sm:p-5">
@@ -668,7 +719,11 @@ export default function DashboardPage() {
                     </div>
 
                     <div className="mt-3 max-h-[260px] space-y-2 overflow-y-auto pr-1">
-                      {filteredHomes.length > 0 ? (
+                      {localGlbHomeIds === null ? (
+                        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-5 text-sm text-white/50">
+                          Checking which scenes have a local .glb…
+                        </div>
+                      ) : filteredHomes.length > 0 ? (
                         filteredHomes.map((home) => {
                           const isSelected = home.home_id === activeHome?.home_id
 
