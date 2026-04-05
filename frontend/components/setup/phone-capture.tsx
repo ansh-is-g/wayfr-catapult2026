@@ -34,7 +34,14 @@ export function PhoneCapture({ onVideoReady, onCancel }: PhoneCaptureProps) {
         const res = await fetch("/api/capture", { method: "POST" })
         if (!res.ok) throw new Error("Failed to create capture session")
         const data = await res.json()
-        const url = `${window.location.origin}/capture/${data.id}`
+
+        let origin = window.location.origin
+        const host = window.location.hostname
+        if ((host === "localhost" || host === "127.0.0.1") && data.lan_ip) {
+          origin = `${window.location.protocol}//${data.lan_ip}:${window.location.port}`
+        }
+
+        const url = `${origin}/capture/${data.id}`
         setSessionId(data.id)
         setCaptureUrl(url)
         setStatus("waiting")

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "WATCHPACK_POLLING=true /opt/homebrew/opt/node/bin/node ./node_modules/next/dist/bin/next dev",
+    "dev": "WATCHPACK_POLLING=true /opt/homebrew/opt/node/bin/node ./node_modules/next/dist/bin/next dev --hostname 0.0.0.0",
     "build": "/opt/homebrew/opt/node/bin/node ./node_modules/next/dist/bin/next build",
     "start": "/opt/homebrew/opt/node/bin/node ./node_modules/next/dist/bin/next start",
     "lint": "eslint"

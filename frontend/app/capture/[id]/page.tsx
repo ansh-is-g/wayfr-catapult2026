@@ -9,11 +9,11 @@ type Status = "loading" | "ready" | "recording" | "previewing" | "uploading" | "
 export default function PhoneCapturePage() {
   const { id } = useParams<{ id: string }>()
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const previewRef = useRef<HTMLVideoElement>(null)
   const previewUrlRef = useRef<string | null>(null)
 
   const [status, setStatus] = useState<Status>("loading")
   const [file, setFile] = useState<File | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [error, setError] = useState("")
   const [uploadProgress, setUploadProgress] = useState(0)
 
@@ -66,7 +66,7 @@ export default function PhoneCapturePage() {
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
     const url = URL.createObjectURL(selected)
     previewUrlRef.current = url
-    if (previewRef.current) previewRef.current.src = url
+    setPreviewUrl(url)
     setStatus("previewing")
   }, [])
 
@@ -114,12 +114,12 @@ export default function PhoneCapturePage() {
 
   const handleRetake = useCallback(() => {
     setFile(null)
+    setPreviewUrl(null)
     setError("")
     if (previewUrlRef.current) {
       URL.revokeObjectURL(previewUrlRef.current)
       previewUrlRef.current = null
     }
-    if (previewRef.current) previewRef.current.removeAttribute("src")
     if (fileInputRef.current) fileInputRef.current.value = ""
     setStatus("ready")
   }, [])
@@ -181,7 +181,7 @@ export default function PhoneCapturePage() {
           <div className="space-y-4">
             <div className="overflow-hidden rounded-2xl border border-border bg-black">
               <video
-                ref={previewRef}
+                src={previewUrl ?? undefined}
                 controls
                 playsInline
                 className="aspect-video w-full object-cover"

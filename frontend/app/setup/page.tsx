@@ -44,6 +44,7 @@ export default function SetupPage() {
   const [mode, setMode] = useState<"idle" | "recording" | "recorded" | "uploading" | "polling" | "done" | "error" | "phone">("idle")
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null)
   const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null)
   const [homeName, setHomeName] = useState("")
   const [homeInfo, setHomeInfo] = useState<HomeInfo | null>(null)
   const [objects, setObjects] = useState<ObjectItem[]>([])
@@ -65,10 +66,7 @@ export default function SetupPage() {
 
     const nextUrl = URL.createObjectURL(file)
     previewUrlRef.current = nextUrl
-
-    if (previewRef.current) {
-      previewRef.current.src = nextUrl
-    }
+    setPreviewSrc(nextUrl)
   }, [])
 
   const handlePhoneVideo = useCallback((blob: Blob, filename: string) => {
@@ -190,12 +188,10 @@ export default function SetupPage() {
     setMode("idle")
     setRecordedBlob(null)
     setUploadFile(null)
+    setPreviewSrc(null)
     setError(null)
     setHomeInfo(null)
     setObjects([])
-    if (previewRef.current) {
-      previewRef.current.removeAttribute("src")
-    }
     if (previewUrlRef.current) {
       URL.revokeObjectURL(previewUrlRef.current)
       previewUrlRef.current = null
@@ -243,6 +239,7 @@ export default function SetupPage() {
             {/* Preview */}
             <video
               ref={previewRef}
+              src={previewSrc ?? undefined}
               className={cn("w-full rounded-2xl border border-border bg-muted object-cover aspect-video", mode !== "recorded" && "hidden")}
               controls
             />
