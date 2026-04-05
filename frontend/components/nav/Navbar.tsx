@@ -34,9 +34,7 @@ export function Navbar() {
             href="/"
             className="flex items-center gap-2 transition-transform hover:scale-105"
           >
-            <span className="text-lg font-bold tracking-tight text-mango">
-              wayfr
-            </span>
+            <span className="text-lg font-bold tracking-tight text-mango">wayfr</span>
           </Link>
 
           {/* Desktop nav */}

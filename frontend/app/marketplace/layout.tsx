@@ -13,10 +13,7 @@ export default function MarketplaceLayout({
       <SidebarInset className="bg-background">
         <header className="sticky top-0 z-30 flex h-12 items-center gap-3 border-b border-border/50 bg-background/85 px-4 backdrop-blur-xl md:hidden">
           <SidebarTrigger />
-          <Link
-            href="/"
-            className="text-sm font-semibold tracking-tight text-foreground hover:text-foreground/90"
-          >
+          <Link href="/" className="text-sm font-semibold tracking-tight text-mango">
             wayfr
           </Link>
         </header>

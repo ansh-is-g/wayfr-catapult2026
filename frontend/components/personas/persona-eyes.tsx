@@ -79,8 +79,8 @@ export function PersonaEyes({
       return
     }
 
-    let blinkTimer: ReturnType<typeof window.setTimeout> | null = null
-    let resetTimer: ReturnType<typeof window.setTimeout> | null = null
+    let blinkTimer: number | null = null
+    let resetTimer: number | null = null
 
     const scheduleBlink = () => {
       blinkTimer = window.setTimeout(() => {
