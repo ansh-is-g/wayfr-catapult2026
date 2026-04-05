@@ -4,8 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { Camera, Upload, CheckCircle2, AlertCircle, Loader2, MapPin } from "lucide-react"
+import { Camera, Upload, CheckCircle2, AlertCircle, Loader2, MapPin, Smartphone } from "lucide-react"
 import { HomeSceneViewer } from "@/components/scene/HomeSceneViewer"
+import { PhoneCapture } from "@/components/setup/phone-capture"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 const POLL_INTERVAL_MS = 3000
@@ -40,7 +41,7 @@ export default function SetupPage() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const previewUrlRef = useRef<string | null>(null)
 
-  const [mode, setMode] = useState<"idle" | "recording" | "recorded" | "uploading" | "polling" | "done" | "error">("idle")
+  const [mode, setMode] = useState<"idle" | "recording" | "recorded" | "uploading" | "polling" | "done" | "error" | "phone">("idle")
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null)
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [homeName, setHomeName] = useState("")
@@ -69,6 +70,14 @@ export default function SetupPage() {
       previewRef.current.src = nextUrl
     }
   }, [])
+
+  const handlePhoneVideo = useCallback((blob: Blob, filename: string) => {
+    setRecordedBlob(blob)
+    setUploadFile(null)
+    setPreviewUrl(blob)
+    setHomeName(filename.replace(/\.\w+$/, ""))
+    setMode("recorded")
+  }, [setPreviewUrl])
 
   const startRecording = useCallback(async () => {
     setError(null)
@@ -209,6 +218,16 @@ export default function SetupPage() {
           </p>
         </div>
 
+        {/* ── Phone capture (QR code flow) ──────────────────────── */}
+        {mode === "phone" && (
+          <div className="rounded-2xl border border-border bg-card p-6">
+            <PhoneCapture
+              onVideoReady={handlePhoneVideo}
+              onCancel={() => setMode("idle")}
+            />
+          </div>
+        )}
+
         {/* ── Step 1: capture ─────────────────────────────────────── */}
         {(mode === "idle" || mode === "recording" || mode === "recorded") && (
           <div className="space-y-6">
@@ -228,9 +247,9 @@ export default function SetupPage() {
               controls
             />
 
-            {/* Idle: two action buttons */}
+            {/* Idle: three action buttons */}
             {mode === "idle" && (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <button
                   onClick={startRecording}
                   className="flex flex-col items-center gap-3 rounded-2xl border border-border bg-card p-6 text-left transition-colors hover:border-mango/50 hover:bg-mango-50"
@@ -253,7 +272,20 @@ export default function SetupPage() {
                   </div>
                   <div>
                     <p className="font-medium text-foreground text-sm">Upload</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Choose a video file</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Choose a file</p>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => setMode("phone")}
+                  className="flex flex-col items-center gap-3 rounded-2xl border border-border bg-card p-6 text-left transition-colors hover:border-mango/50 hover:bg-mango-50"
+                >
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-mango-100 text-mango-700">
+                    <Smartphone className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-foreground text-sm">Phone</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Scan QR code</p>
                   </div>
                 </button>
 
