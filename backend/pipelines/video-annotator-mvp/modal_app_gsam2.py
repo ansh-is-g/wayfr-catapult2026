@@ -572,7 +572,7 @@ def _get_sam2_masks(image_np, boxes):
         # (N, H, W) — keep as one mask per box
         pass
     elif masks.ndim == 4:
-        # e.g. (1, N, H, W) or (N, 1, H, W)
+        # e.g. (1, N, H, W) or (N, 1, H, W)sdafjas;dljf;as
         if masks.shape[0] == 1:
             masks = masks.squeeze(0)
         elif masks.shape[1] == 1:
