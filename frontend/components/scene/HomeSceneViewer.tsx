@@ -58,6 +58,12 @@ type ResolvedSceneAsset = {
   source: "local" | "remote"
 }
 
+export type PersonaAmbientAnnotation = {
+  objectId: string
+  label: string
+  color: string
+}
+
 export interface HomeSceneViewerProps {
   homeId?: string
   glbUrl: string
@@ -81,6 +87,10 @@ export interface HomeSceneViewerProps {
   onVertexCountChange?: (count: number) => void
   showSceneBadge?: boolean
   exactSelectionHighlight?: boolean
+  /** Maps objectId → display label override (e.g. persona label) */
+  labelMap?: Record<string, string>
+  /** Ambient persistent callouts for persona-annotated objects */
+  personaAmbientAnnotations?: PersonaAmbientAnnotation[]
 }
 
 const sceneAssetCache = new Map<string, Promise<ResolvedSceneAsset>>()
@@ -210,6 +220,8 @@ export function HomeSceneViewer({
   onVertexCountChange,
   showSceneBadge = true,
   exactSelectionHighlight = false,
+  labelMap,
+  personaAmbientAnnotations,
 }: HomeSceneViewerProps) {
   const mergedDebugOptions = useMemo(() => ({ ...DEFAULT_DEBUG_OPTIONS, ...debugOptions }), [debugOptions])
   const sceneKey = useMemo(
@@ -399,11 +411,13 @@ export function HomeSceneViewer({
           exactSelectionHighlight={exactSelectionHighlight}
           onPointCount={handlePointCount}
           onGlbError={handleGlbError}
+          labelMap={labelMap}
+          personaAmbientAnnotations={personaAmbientAnnotations}
         />
       ) : null}
 
       {showSceneBadge ? (
-        <div className="pointer-events-none absolute bottom-3 left-3 z-20 rounded-full border border-white/10 bg-black/45 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-white/72 backdrop-blur-xl">
+        <div className="pointer-events-none absolute bottom-3 left-3 z-20 rounded-full border border-black/10 bg-white/75 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-foreground/72 backdrop-blur-xl dark:border-white/10 dark:bg-black/45 dark:text-white/72">
           {vertexCount > 0 ? `${vertexCount.toLocaleString()} verts` : glbFailed ? "scene unavailable" : "loading room mesh"}
           {" · "}
           {objects.length} visible
