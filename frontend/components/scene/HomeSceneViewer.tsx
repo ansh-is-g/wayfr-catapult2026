@@ -50,6 +50,12 @@ type ResolvedSceneAsset = {
   source: "local" | "remote"
 }
 
+export type PersonaAmbientAnnotation = {
+  objectId: string
+  label: string
+  color: string
+}
+
 export interface HomeSceneViewerProps {
   homeId?: string
   glbUrl: string
@@ -391,6 +397,8 @@ export function HomeSceneViewer({
           exactSelectionHighlight={exactSelectionHighlight}
           onPointCount={handlePointCount}
           onGlbError={handleGlbError}
+          labelMap={labelMap}
+          personaAmbientAnnotations={personaAmbientAnnotations}
         />
       ) : null}
 
