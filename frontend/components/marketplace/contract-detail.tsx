@@ -1,8 +1,18 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { ArrowLeft, Calendar, DollarSign, MapPin, Users } from "lucide-react"
+import {
+  ArrowLeft,
+  Calendar,
+  DollarSign,
+  Loader2,
+  MapPin,
+  Play,
+  ScanSearch,
+  Users,
+} from "lucide-react"
 
+import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { type Contract } from "./contract-card"
@@ -19,6 +29,7 @@ interface Submission {
   created_at: string
   payout_cents: number
   platform_fee_cents: number
+  video_url?: string | null
   profiles?: { display_name: string }
 }
 
@@ -222,27 +233,13 @@ export function ContractDetail({
           <h2 className="mb-3 text-sm font-semibold text-foreground">
             Submissions ({submissions.length})
           </h2>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-4">
             {submissions.map((sub) => (
-              <div
+              <SubmissionCard
                 key={sub.id}
-                className="flex items-center justify-between rounded-xl border border-border/50 bg-card px-4 py-3"
-              >
-                <div>
-                  <p className="text-sm font-medium text-foreground">
-                    {sub.profiles?.display_name || "Consumer"}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {formatDate(sub.created_at)}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-medium text-foreground">
-                    {formatCents(sub.payout_cents + sub.platform_fee_cents)}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">paid</p>
-                </div>
-              </div>
+                submission={sub}
+                contractTitle={contract.title}
+              />
             ))}
           </div>
         </div>
@@ -270,6 +267,144 @@ export function ContractDetail({
           }}
         />
       )}
+    </div>
+  )
+}
+
+function SubmissionCard({
+  submission,
+  contractTitle,
+}: {
+  submission: Submission
+  contractTitle: string
+}) {
+  const [videoExpanded, setVideoExpanded] = useState(false)
+  const [pipelineState, setPipelineState] = useState<
+    "idle" | "loading" | "success" | "error"
+  >("idle")
+  const [pipelineResult, setPipelineResult] = useState<{
+    home_id: string
+    name: string
+  } | null>(null)
+  const [pipelineError, setPipelineError] = useState("")
+
+  async function handleRunPipeline() {
+    setPipelineState("loading")
+    setPipelineError("")
+    try {
+      const res = await fetch(
+        `/api/marketplace/submissions/${submission.id}/run-pipeline`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: `${contractTitle} — ${submission.profiles?.display_name || "Submission"}`,
+          }),
+        }
+      )
+      const data = await res.json()
+      if (!res.ok) {
+        setPipelineError(data.error || "Pipeline failed")
+        setPipelineState("error")
+        return
+      }
+      setPipelineResult(data)
+      setPipelineState("success")
+    } catch {
+      setPipelineError("Network error")
+      setPipelineState("error")
+    }
+  }
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-border/50 bg-card">
+      <div className="flex items-center justify-between px-4 py-3">
+        <div>
+          <p className="text-sm font-medium text-foreground">
+            {submission.profiles?.display_name || "Consumer"}
+          </p>
+          <p className="text-[10px] text-muted-foreground">
+            {formatDate(submission.created_at)}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="text-right">
+            <p className="text-sm font-medium text-foreground">
+              {formatCents(submission.payout_cents + submission.platform_fee_cents)}
+            </p>
+            <p className="text-[10px] text-muted-foreground">paid</p>
+          </div>
+        </div>
+      </div>
+
+      {submission.video_url && (
+        <div className="border-t border-border/30">
+          {!videoExpanded ? (
+            <button
+              onClick={() => setVideoExpanded(true)}
+              className="flex w-full items-center gap-2 px-4 py-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground"
+            >
+              <Play className="size-3.5" />
+              Preview recording
+            </button>
+          ) : (
+            <div className="p-3">
+              <video
+                src={submission.video_url}
+                controls
+                className="w-full rounded-lg bg-black"
+                style={{ maxHeight: 360 }}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="border-t border-border/30 px-4 py-3">
+        {pipelineState === "idle" && (
+          <Button
+            onClick={handleRunPipeline}
+            variant="outline"
+            className="h-8 gap-1.5 rounded-lg text-xs"
+          >
+            <ScanSearch className="size-3.5" />
+            Run Setup Pipeline
+          </Button>
+        )}
+        {pipelineState === "loading" && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="size-3.5 animate-spin" />
+            Sending to pipeline...
+          </div>
+        )}
+        {pipelineState === "success" && pipelineResult && (
+          <div className="flex items-center gap-2">
+            <Badge
+              variant="outline"
+              className="border-emerald-500/30 text-emerald-500"
+            >
+              Pipeline started
+            </Badge>
+            <a
+              href={`/dashboard`}
+              className="text-xs text-mango-500 underline underline-offset-2 hover:text-mango-300"
+            >
+              View in dashboard
+            </a>
+          </div>
+        )}
+        {pipelineState === "error" && (
+          <div className="flex items-center gap-2">
+            <p className="text-xs text-destructive">{pipelineError}</p>
+            <button
+              onClick={handleRunPipeline}
+              className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

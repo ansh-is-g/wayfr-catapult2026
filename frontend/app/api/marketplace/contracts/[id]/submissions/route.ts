@@ -71,5 +71,14 @@ export async function GET(
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ submissions: submissions ?? [] })
+  const withUrls = await Promise.all(
+    (submissions ?? []).map(async (sub) => {
+      const { data: signed } = await supabase.storage
+        .from("marketplace-recordings")
+        .createSignedUrl(sub.video_storage_path, 3600)
+      return { ...sub, video_url: signed?.signedUrl ?? null }
+    })
+  )
+
+  return NextResponse.json({ submissions: withUrls })
 }
