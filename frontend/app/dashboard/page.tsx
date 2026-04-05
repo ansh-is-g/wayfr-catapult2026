@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ArrowRight,
   ChevronDown,
@@ -9,6 +9,7 @@ import {
   ChevronRight,
   FolderClock,
   Loader2,
+  Minus,
   Plus,
   RefreshCw,
   Search,
@@ -72,7 +73,22 @@ type ObjectsResponse = {
     bbox_max?: number[] | null
     confidence?: number | null
     n_observations?: number
+    evidence_frame?: {
+      image_url?: string | null
+      sampled_frame_idx?: number | null
+      source_frame_idx?: number | null
+      timestamp_sec?: number | null
+      bbox?: number[] | null
+      mask_quality?: number | null
+    } | null
   }>
+}
+
+function resolveBackendAssetUrl(url: string) {
+  if (/^https?:\/\//i.test(url)) {
+    return url
+  }
+  return `${API_URL}${url}`
 }
 
 function parseTimestamp(value: unknown) {
@@ -134,17 +150,17 @@ function getStatusLabel(status: HomeStatus) {
 }
 
 function getStatusClasses(status: HomeStatus) {
-  if (status === "ready") return "border-green-500/25 bg-green-500/12 text-green-200"
+  if (status === "ready") return "border-green-500/25 bg-green-500/12 text-green-600 dark:text-green-200"
   if (status === "processing") return "border-mango/25 bg-mango/12 text-mango"
-  return "border-red-500/25 bg-red-500/12 text-red-300"
+  return "border-red-500/25 bg-red-500/12 text-red-600 dark:text-red-300"
 }
 
 function EmptyPanel() {
   return (
-    <div className="w-full max-w-xl rounded-[36px] border border-white/10 bg-black/50 px-6 py-14 text-center text-white backdrop-blur-2xl">
+    <div className="w-full max-w-xl rounded-[36px] border border-black/10 dark:border-white/10 bg-white/80 dark:bg-black/50 px-6 py-14 text-center text-foreground backdrop-blur-2xl">
       <FolderClock className="mx-auto h-10 w-10 text-mango" />
       <h2 className="mt-4 text-2xl font-semibold tracking-tight">No saved scenes yet</h2>
-      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-white/60">
+      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-foreground/60 dark:text-white/60">
         Start in setup, upload a walkthrough, and the completed GLB will appear here.
       </p>
       <Link
@@ -172,23 +188,187 @@ function StageStateCard({
   return (
     <div
       className={cn(
-        "w-full max-w-lg rounded-[34px] border px-6 py-6 text-white shadow-[0_30px_120px_rgba(0,0,0,0.35)] backdrop-blur-2xl",
-        tone === "error" ? "border-red-500/25 bg-red-500/10" : "border-white/10 bg-black/52"
+        "w-full max-w-lg rounded-[34px] border px-6 py-6 text-foreground shadow-[0_30px_120px_rgba(0,0,0,0.35)] backdrop-blur-2xl",
+        tone === "error" ? "border-red-500/25 bg-red-500/10" : "border-black/10 dark:border-white/10 bg-white/80 dark:bg-black/52"
       )}
     >
       <div className="flex items-start gap-4">
         <div
           className={cn(
             "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl",
-            tone === "error" ? "bg-red-500/12 text-red-300" : "bg-mango/12 text-mango"
+            tone === "error" ? "bg-red-500/12 text-red-600 dark:text-red-300" : "bg-mango/12 text-mango"
           )}
         >
           {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <TriangleAlert className="h-5 w-5" />}
         </div>
         <div>
           <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
-          <p className="mt-2 text-sm leading-6 text-white/68">{description}</p>
+          <p className="mt-2 text-sm leading-6 text-foreground/68 dark:text-white/68">{description}</p>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function FocusedObjectPhotoPanel({
+  focusedObject,
+}: {
+  focusedObject: ObjectItem | null
+}) {
+  const evidenceFrame = focusedObject?.evidenceFrame ?? null
+  const [panelState, setPanelState] = useState({
+    left: 20,
+    top: 96,
+    width: 380,
+    height: 520,
+    collapsed: false,
+  })
+  const dragRef = useRef<{
+    kind: "move" | "resize"
+    startX: number
+    startY: number
+    left: number
+    top: number
+    width: number
+    height: number
+  } | null>(null)
+
+  useEffect(() => {
+    const onPointerMove = (event: PointerEvent) => {
+      const drag = dragRef.current
+      if (!drag) return
+
+      if (drag.kind === "move") {
+        const nextLeft = Math.min(
+          Math.max(12, drag.left + (event.clientX - drag.startX)),
+          Math.max(12, window.innerWidth - panelState.width - 12)
+        )
+        const nextTop = Math.min(
+          Math.max(84, drag.top + (event.clientY - drag.startY)),
+          Math.max(84, window.innerHeight - (panelState.collapsed ? 76 : panelState.height) - 12)
+        )
+        setPanelState((current) => ({
+          ...current,
+          left: nextLeft,
+          top: nextTop,
+        }))
+        return
+      }
+
+      const nextWidth = Math.min(
+        Math.max(300, drag.width + (event.clientX - drag.startX)),
+        Math.max(300, window.innerWidth - drag.left - 12)
+      )
+      const nextHeight = Math.min(
+        Math.max(360, drag.height + (event.clientY - drag.startY)),
+        Math.max(360, window.innerHeight - drag.top - 12)
+      )
+      setPanelState((current) => ({
+        ...current,
+        width: nextWidth,
+        height: nextHeight,
+      }))
+    }
+
+    const onPointerUp = () => {
+      dragRef.current = null
+    }
+
+    window.addEventListener("pointermove", onPointerMove)
+    window.addEventListener("pointerup", onPointerUp)
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove)
+      window.removeEventListener("pointerup", onPointerUp)
+    }
+  }, [panelState.collapsed, panelState.height, panelState.width])
+
+  if (!focusedObject || !evidenceFrame?.imageUrl) return null
+
+  return (
+    <div
+      className="pointer-events-none absolute z-40 hidden sm:block"
+      style={{ left: panelState.left, top: panelState.top }}
+    >
+      <div
+        className="pointer-events-auto overflow-hidden rounded-[28px] border border-white/10 bg-black/48 backdrop-blur-2xl"
+        style={{ width: panelState.width }}
+      >
+        <div
+          className="flex cursor-move items-center justify-between gap-3 border-b border-white/10 px-4 py-3"
+          onPointerDown={(event) => {
+            if ((event.target as HTMLElement).closest("[data-panel-control='true']")) return
+            dragRef.current = {
+              kind: "move",
+              startX: event.clientX,
+              startY: event.clientY,
+              left: panelState.left,
+              top: panelState.top,
+              width: panelState.width,
+              height: panelState.height,
+            }
+          }}
+        >
+          <div className="min-w-0">
+            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/45">Focused image</p>
+            <p className="mt-1 truncate text-sm font-medium capitalize text-white">{focusedObject.label}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {typeof evidenceFrame.timestampSec === "number" ? (
+              <span className="shrink-0 font-mono text-[11px] text-white/55">{evidenceFrame.timestampSec.toFixed(1)}s</span>
+            ) : null}
+            <button
+              type="button"
+              data-panel-control="true"
+              onClick={() =>
+                setPanelState((current) => ({
+                  ...current,
+                  collapsed: !current.collapsed,
+                }))
+              }
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+              aria-label={panelState.collapsed ? "Expand photo panel" : "Collapse photo panel"}
+            >
+              <Minus className={cn("h-4 w-4 transition-transform", panelState.collapsed && "rotate-180")} />
+            </button>
+          </div>
+        </div>
+
+        {!panelState.collapsed ? (
+          <div className="relative">
+            <div
+              className="flex items-center justify-center bg-black/38 px-3 py-3"
+              style={{ height: panelState.height }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={evidenceFrame.imageUrl}
+                alt={`${focusedObject.label} detection frame`}
+                className="max-h-full w-full rounded-[22px] object-contain"
+              />
+            </div>
+            <button
+              type="button"
+              data-panel-control="true"
+              aria-label="Resize photo panel"
+              className="absolute bottom-3 right-3 h-6 w-6 cursor-se-resize rounded-full border border-white/10 bg-black/55 text-white/55 transition-colors hover:bg-white/10 hover:text-white"
+              style={{ touchAction: "none" }}
+              onPointerDown={(event) => {
+                event.preventDefault()
+                dragRef.current = {
+                  kind: "resize",
+                  startX: event.clientX,
+                  startY: event.clientY,
+                  left: panelState.left,
+                  top: panelState.top,
+                  width: panelState.width,
+                  height: panelState.height,
+                }
+              }}
+            >
+              <span className="block translate-x-[3px] translate-y-[-1px] text-xs">+</span>
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   )
@@ -302,6 +482,16 @@ export default function DashboardPage() {
           bbox_max: object.bbox_max ?? null,
           confidence: object.confidence ?? null,
           n_observations: object.n_observations ?? 1,
+          evidenceFrame: object.evidence_frame?.image_url
+            ? {
+                imageUrl: resolveBackendAssetUrl(object.evidence_frame.image_url),
+                sampledFrameIdx: object.evidence_frame.sampled_frame_idx ?? null,
+                sourceFrameIdx: object.evidence_frame.source_frame_idx ?? null,
+                timestampSec: object.evidence_frame.timestamp_sec ?? null,
+                bbox: object.evidence_frame.bbox ?? null,
+                maskQuality: object.evidence_frame.mask_quality ?? null,
+              }
+            : null,
         }))
       )
     } catch (error: unknown) {
@@ -574,7 +764,7 @@ export default function DashboardPage() {
     homes.length > 0 && !homesError && (localGlbHomeIds === null || homesWithLocalGlb.length > 0)
 
   return (
-    <div className="dark relative h-full min-h-0 overflow-hidden bg-[#030507] text-white">
+    <div className="relative h-full min-h-0 overflow-hidden bg-[#f0ece3] dark:bg-[#030507] text-foreground">
       {showReadyScene ? (
         <div className="absolute inset-0 z-0">
           <HomeSceneViewer
@@ -598,23 +788,25 @@ export default function DashboardPage() {
           />
         </div>
       ) : (
-        <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,rgba(88,196,255,0.1),transparent_28%),radial-gradient(circle_at_bottom,rgba(245,166,35,0.1),transparent_24%),linear-gradient(180deg,#030507_0%,#06090d_100%)]" />
+        <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,rgba(88,196,255,0.1),transparent_28%),radial-gradient(circle_at_bottom,rgba(245,166,35,0.1),transparent_24%),linear-gradient(180deg,#f0ece3_0%,#e8e4db_100%)] dark:bg-[radial-gradient(circle_at_top,rgba(88,196,255,0.1),transparent_28%),radial-gradient(circle_at_bottom,rgba(245,166,35,0.1),transparent_24%),linear-gradient(180deg,#030507_0%,#06090d_100%)]" />
       )}
+
+      <FocusedObjectPhotoPanel focusedObject={focusedObject} />
 
       <div className="pointer-events-none absolute inset-0 z-10 bg-[radial-gradient(circle_at_top,rgba(88,196,255,0.08),transparent_28%),radial-gradient(circle_at_bottom,rgba(245,166,35,0.08),transparent_22%)]" />
 
       <div className="pointer-events-none absolute inset-x-0 top-0 z-30 px-3 pt-3 sm:px-5 sm:pt-5">
         <div className="flex items-center justify-center">
-          <div className="pointer-events-auto inline-flex max-w-[calc(100vw-1.5rem)] items-center gap-3 rounded-full border border-white/10 bg-black/40 px-4 py-2 text-sm text-white/82 backdrop-blur-xl">
-            <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-white/50">wayfr</span>
-            <span className="truncate font-medium text-white">{activeHome?.name ?? "Scene explorer"}</span>
+          <div className="pointer-events-auto inline-flex max-w-[calc(100vw-1.5rem)] items-center gap-3 rounded-full border border-black/10 dark:border-white/10 bg-white/80 dark:bg-black/40 px-4 py-2 text-sm text-foreground/82 dark:text-white/82 backdrop-blur-xl">
+            <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-foreground/50 dark:text-white/50">wayfr</span>
+            <span className="truncate font-medium text-foreground">{activeHome?.name ?? "Scene explorer"}</span>
             {activeHome ? (
               <Badge className={cn("border font-medium", getStatusClasses(activeHome.status))}>
                 {getStatusLabel(activeHome.status)}
               </Badge>
             ) : null}
             {homeLoading ? <Loader2 className="h-4 w-4 animate-spin text-mango" /> : null}
-            <span className="hidden text-white/55 sm:inline">
+            <span className="hidden text-foreground/55 dark:text-white/55 sm:inline">
               {activeHome ? `Updated ${formatRelative(activeHomeUpdatedAt)}` : homesLoading ? "Loading library" : "Immersive stage"}
             </span>
           </div>
@@ -623,11 +815,11 @@ export default function DashboardPage() {
 
       {homesError ? (
         <div className="absolute inset-x-0 top-20 z-40 flex justify-center px-3 sm:top-24">
-          <div className="w-full max-w-2xl rounded-[28px] border border-red-500/25 bg-red-500/10 px-5 py-4 text-sm text-red-100 backdrop-blur-2xl">
+          <div className="w-full max-w-2xl rounded-[28px] border border-red-500/25 bg-red-500/10 px-5 py-4 text-sm text-red-700 dark:text-red-100 backdrop-blur-2xl">
             <div className="flex items-start gap-3">
-              <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-red-300" />
+              <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-300" />
               <div>
-                <p className="font-medium text-white">Unable to load saved scenes.</p>
+                <p className="font-medium text-foreground">Unable to load saved scenes.</p>
                 <p className="mt-1 text-red-100/80">{homesError}</p>
               </div>
             </div>
@@ -664,26 +856,26 @@ export default function DashboardPage() {
         <>
           <div className="pointer-events-none absolute inset-x-0 bottom-20 z-40 flex min-h-0 flex-col p-3 sm:inset-y-0 sm:right-0 sm:left-auto sm:h-full sm:w-[452px] sm:p-5">
             <aside className="pointer-events-auto mx-auto flex h-[min(68dvh,760px)] w-full max-w-[420px] min-h-0 flex-col gap-3 sm:h-full sm:min-h-0 sm:flex-1">
-              <div className="shrink-0 rounded-[28px] border border-white/10 bg-black/48 p-4 backdrop-blur-2xl">
+              <div className="shrink-0 rounded-[28px] border border-black/10 dark:border-white/10 bg-white/80 dark:bg-black/48 p-4 backdrop-blur-2xl">
                 <div className="flex items-start justify-between gap-3">
                   <button
                     type="button"
                     onClick={() => setSceneSwitcherExpanded((open) => !open)}
-                    className="group flex min-w-0 flex-1 items-start gap-2 rounded-2xl text-left outline-none ring-offset-2 ring-offset-black/48 transition-colors hover:bg-white/5 focus-visible:ring-2 focus-visible:ring-mango/50"
+                    className="group flex min-w-0 flex-1 items-start gap-2 rounded-2xl text-left outline-none ring-offset-2 ring-offset-background transition-colors hover:bg-black/5 dark:hover:bg-white/5 focus-visible:ring-2 focus-visible:ring-mango/50"
                     aria-expanded={sceneSwitcherExpanded}
                     aria-controls={sceneSwitcherExpanded ? "scene-switcher-panel" : undefined}
                     id="scene-switcher-heading"
                   >
                     <ChevronDown
                       className={cn(
-                        "mt-1 h-5 w-5 shrink-0 text-white/45 transition-transform duration-200 group-hover:text-white/70",
+                        "mt-1 h-5 w-5 shrink-0 text-foreground/45 dark:text-white/45 transition-transform duration-200 group-hover:text-foreground/70 dark:group-hover:text-white/70",
                         sceneSwitcherExpanded && "rotate-180"
                       )}
                       aria-hidden
                     />
                     <div>
-                      <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-white/45">Scene switcher</p>
-                      <h2 className="mt-1 text-lg font-semibold text-white">Search scenes</h2>
+                      <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-foreground/45 dark:text-white/45">Scene switcher</p>
+                      <h2 className="mt-1 text-lg font-semibold text-foreground">Search scenes</h2>
                     </div>
                   </button>
 
@@ -691,7 +883,7 @@ export default function DashboardPage() {
                     <Button
                       variant="outline"
                       size="icon"
-                      className="h-9 w-9 rounded-full border-white/10 bg-white/5 text-white hover:bg-white/10"
+                      className="h-9 w-9 rounded-full border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 text-foreground hover:bg-black/10 dark:hover:bg-white/10"
                       onClick={refreshAll}
                     >
                       <RefreshCw className={cn("h-4 w-4", homeLoading || homesLoading ? "animate-spin" : "")} />
@@ -709,18 +901,18 @@ export default function DashboardPage() {
                 {sceneSwitcherExpanded ? (
                   <div id="scene-switcher-panel" role="region" aria-labelledby="scene-switcher-heading">
                     <div className="relative mt-4">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/34" />
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground/34 dark:text-white/34" />
                       <Input
                         value={historyQuery}
                         onChange={(event) => setHistoryQuery(event.target.value)}
                         placeholder="Search scenes"
-                        className="rounded-2xl border-white/10 bg-white/5 pl-10 text-white placeholder:text-white/30"
+                        className="rounded-2xl border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 pl-10 text-foreground placeholder:text-foreground/30 dark:placeholder:text-white/30"
                       />
                     </div>
 
                     <div className="mt-3 max-h-[260px] space-y-2 overflow-y-auto pr-1">
                       {localGlbHomeIds === null ? (
-                        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-5 text-sm text-white/50">
+                        <div className="rounded-2xl border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 px-4 py-5 text-sm text-foreground/50 dark:text-white/50">
                           Checking which scenes have a local .glb…
                         </div>
                       ) : filteredHomes.length > 0 ? (
@@ -735,21 +927,21 @@ export default function DashboardPage() {
                               className={cn(
                                 "w-full rounded-2xl border px-4 py-3 text-left transition-colors",
                                 isSelected
-                                  ? "border-mango/30 bg-mango/10 text-white"
-                                  : "border-white/10 bg-white/5 text-white/90 hover:bg-white/8"
+                                  ? "border-mango/30 bg-mango/10 text-foreground"
+                                  : "border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 text-foreground/90 hover:bg-black/8 dark:hover:bg-white/8"
                               )}
                             >
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
                                   <p className="truncate font-medium">{home.name}</p>
-                                  <p className="mt-1 font-mono text-[11px] text-white/42">{home.home_id}</p>
+                                  <p className="mt-1 font-mono text-[11px] text-foreground/42 dark:text-white/42">{home.home_id}</p>
                                 </div>
                                 <Badge className={cn("border shrink-0 font-medium", getStatusClasses(home.status))}>
                                   {getStatusLabel(home.status)}
                                 </Badge>
                               </div>
 
-                              <div className="mt-2 flex items-center justify-between text-xs text-white/46">
+                              <div className="mt-2 flex items-center justify-between text-xs text-foreground/46 dark:text-white/46">
                                 <span>{home.num_objects} objects</span>
                                 <span>{formatDateTime(home.created_at)}</span>
                               </div>
@@ -757,7 +949,7 @@ export default function DashboardPage() {
                           )
                         })
                       ) : (
-                        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-5 text-sm text-white/50">
+                        <div className="rounded-2xl border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 px-4 py-5 text-sm text-foreground/50 dark:text-white/50">
                           No scenes match this filter.
                         </div>
                       )}
@@ -814,10 +1006,10 @@ export default function DashboardPage() {
             showSideRail ? "sm:right-[calc(452px+1.25rem)]" : null
           )}
         >
-          <div className="pointer-events-auto mx-auto flex w-fit max-w-[min(100%,36rem)] flex-wrap items-center justify-center gap-2 rounded-[24px] border border-white/10 bg-black/42 px-3 py-2.5 backdrop-blur-2xl sm:max-w-[min(100%,42rem)] sm:px-4 sm:py-3">
+          <div className="pointer-events-auto mx-auto flex w-fit max-w-[min(100%,36rem)] flex-wrap items-center justify-center gap-2 rounded-[24px] border border-black/10 dark:border-white/10 bg-white/80 dark:bg-black/42 px-3 py-2.5 backdrop-blur-2xl sm:max-w-[min(100%,42rem)] sm:px-4 sm:py-3">
             <Button
               variant="outline"
-              className="rounded-full border-white/10 bg-white/5 text-white hover:bg-white/10"
+              className="rounded-full border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 text-foreground hover:bg-black/10 dark:hover:bg-white/10"
               onClick={() => navigateRelative(-1)}
             >
               <ChevronLeft className="mr-2 h-4 w-4" />
@@ -825,7 +1017,7 @@ export default function DashboardPage() {
             </Button>
             <Button
               variant="outline"
-              className="rounded-full border-white/10 bg-white/5 text-white hover:bg-white/10"
+              className="rounded-full border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 text-foreground hover:bg-black/10 dark:hover:bg-white/10"
               onClick={() => navigateRelative(1)}
             >
               Next
@@ -833,28 +1025,28 @@ export default function DashboardPage() {
             </Button>
             <Button
               variant="outline"
-              className="rounded-full border-white/10 bg-white/5 text-white hover:bg-white/10"
+              className="rounded-full border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 text-foreground hover:bg-black/10 dark:hover:bg-white/10"
               onClick={() => createCameraCommand("reset")}
             >
               Reset view
             </Button>
             <Button
               variant="outline"
-              className="rounded-full border-white/10 bg-white/5 text-white hover:bg-white/10"
+              className="rounded-full border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 text-foreground hover:bg-black/10 dark:hover:bg-white/10"
               onClick={() => createCameraCommand("top")}
             >
               Top view
             </Button>
             <Button
               variant="outline"
-              className="rounded-full border-white/10 bg-white/5 text-white hover:bg-white/10"
+              className="rounded-full border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 text-foreground hover:bg-black/10 dark:hover:bg-white/10"
               onClick={() => createCameraCommand("overview")}
             >
               Overview
             </Button>
             <Button
               variant="outline"
-              className="rounded-full border-white/10 bg-white/5 text-white hover:bg-white/10"
+              className="rounded-full border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 text-foreground hover:bg-black/10 dark:hover:bg-white/10"
               onClick={() => createCameraCommand("focus")}
               disabled={!focusedObject}
             >
