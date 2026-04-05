@@ -16,6 +16,8 @@ import {
 const navLinks = [
   { href: "/setup", label: "Setup" },
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/personas", label: "Persona" },
+  { href: "/marketplace", label: "Marketplace", desktopClassName: "ml-4" },
 ]
 
 export function Navbar() {
@@ -43,7 +45,7 @@ export function Navbar() {
               <Link
                 key={link.href}
                 href={link.href}
-                className="relative text-muted-foreground transition-colors hover:text-foreground after:absolute after:-bottom-1 after:left-0 after:h-px after:w-0 after:bg-mango after:transition-all hover:after:w-full"
+                className={`relative text-muted-foreground transition-colors hover:text-foreground after:absolute after:-bottom-1 after:left-0 after:h-px after:w-0 after:bg-mango after:transition-all hover:after:w-full ${link.desktopClassName ?? ""}`}
               >
                 {link.label}
               </Link>
