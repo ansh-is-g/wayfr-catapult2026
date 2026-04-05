@@ -47,7 +47,6 @@ uploads/
 
 
 # Screenshots and images
-*.png
 *.jpg
 *.jpeg
 *.gif
@@ -56,3 +55,6 @@ uploads/
 # Test video inputs
 test/inputs/
 backend/test/inputs/
+
+
+.playwright*
