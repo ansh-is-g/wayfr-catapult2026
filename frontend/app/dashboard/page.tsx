@@ -511,21 +511,15 @@ export default function DashboardPage() {
   }, [])
 
   const navigateRelative = useCallback(
-    (delta: number, scope: "all" | "class") => {
+    (delta: number) => {
       if (visibleObjects.length === 0) return
-
-      const candidates =
-        scope === "class" && focusedObject
-          ? visibleObjects.filter((object) => object.label === focusedObject.label)
-          : visibleObjects
-
-      if (candidates.length === 0) return
-      const currentIndex = focusedObjectId ? candidates.findIndex((object) => object.id === focusedObjectId) : -1
-      const nextIndex = currentIndex >= 0 ? (currentIndex + delta + candidates.length) % candidates.length : 0
-      const nextObject = candidates[nextIndex]
+      const currentIndex = focusedObjectId ? visibleObjects.findIndex((object) => object.id === focusedObjectId) : -1
+      const nextIndex =
+        currentIndex >= 0 ? (currentIndex + delta + visibleObjects.length) % visibleObjects.length : 0
+      const nextObject = visibleObjects[nextIndex]
       if (nextObject) activateObject(nextObject.id)
     },
-    [activateObject, focusedObject, focusedObjectId, visibleObjects]
+    [activateObject, focusedObjectId, visibleObjects]
   )
 
   const cameraCommand = useMemo(
@@ -617,7 +611,7 @@ export default function DashboardPage() {
       {showSideRail ? (
         <>
           <div className="pointer-events-none absolute inset-x-0 bottom-20 z-40 p-3 sm:inset-y-0 sm:right-0 sm:left-auto sm:w-[452px] sm:p-5">
-            <aside className="pointer-events-auto mx-auto flex max-h-[min(68dvh,760px)] w-full max-w-[420px] flex-col gap-3 overflow-y-auto pr-1 sm:h-full sm:max-h-[calc(100dvh-2.5rem)]">
+            <aside className="pointer-events-auto mx-auto flex max-h-[min(68dvh,760px)] w-full max-w-[420px] flex-col gap-3 overflow-y-auto pb-4 pr-1 sm:h-full sm:max-h-[calc(100dvh-2.5rem)]">
               <div className="rounded-[28px] border border-white/10 bg-black/48 p-4 backdrop-blur-2xl">
                 <div className="flex items-start justify-between gap-3">
                   <button
@@ -758,17 +752,15 @@ export default function DashboardPage() {
       {showSceneControls ? (
         <div
           className={cn(
-            "pointer-events-none absolute bottom-4 z-30 flex justify-center px-3 sm:bottom-5",
-            showSideRail
-              ? "left-0 right-0 sm:right-[calc(452px+1.25rem)]"
-              : "left-1/2 w-[min(980px,calc(100%-1.5rem))] -translate-x-1/2 sm:w-[min(980px,calc(100%-3rem))]"
+            "pointer-events-none absolute bottom-4 left-0 right-0 z-30 flex justify-center px-3 sm:bottom-5",
+            showSideRail ? "sm:right-[calc(452px+1.25rem)]" : null
           )}
         >
-          <div className="pointer-events-auto flex w-full max-w-[980px] flex-wrap items-center justify-center gap-2 rounded-[24px] border border-white/10 bg-black/42 px-3 py-3 backdrop-blur-2xl">
+          <div className="pointer-events-auto mx-auto flex w-fit max-w-[min(100%,36rem)] flex-wrap items-center justify-center gap-2 rounded-[24px] border border-white/10 bg-black/42 px-3 py-2.5 backdrop-blur-2xl sm:max-w-[min(100%,42rem)] sm:px-4 sm:py-3">
             <Button
               variant="outline"
               className="rounded-full border-white/10 bg-white/5 text-white hover:bg-white/10"
-              onClick={() => navigateRelative(-1, "all")}
+              onClick={() => navigateRelative(-1)}
             >
               <ChevronLeft className="mr-2 h-4 w-4" />
               Previous
@@ -776,18 +768,10 @@ export default function DashboardPage() {
             <Button
               variant="outline"
               className="rounded-full border-white/10 bg-white/5 text-white hover:bg-white/10"
-              onClick={() => navigateRelative(1, "all")}
+              onClick={() => navigateRelative(1)}
             >
               Next
               <ChevronRight className="ml-2 h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              className="rounded-full border-white/10 bg-white/5 text-white hover:bg-white/10"
-              onClick={() => navigateRelative(1, "class")}
-              disabled={!focusedObject}
-            >
-              Next in class
             </Button>
             <Button
               variant="outline"
