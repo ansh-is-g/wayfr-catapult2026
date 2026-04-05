@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { Camera, Upload, CheckCircle2, AlertCircle, Loader2, MapPin, Smartphone } from "lucide-react"
+import { Upload, CheckCircle2, AlertCircle, Loader2, MapPin, Smartphone } from "lucide-react"
 import { HomeSceneViewer } from "@/components/scene/HomeSceneViewer"
 import { PhoneCapture } from "@/components/setup/phone-capture"
 
@@ -32,16 +32,12 @@ type HomeInfo = {
 }
 
 export default function SetupPage() {
-  const videoRef = useRef<HTMLVideoElement>(null)
   const previewRef = useRef<HTMLVideoElement>(null)
-  const recorderRef = useRef<MediaRecorder | null>(null)
-  const chunksRef = useRef<Blob[]>([])
-  const streamRef = useRef<MediaStream | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const previewUrlRef = useRef<string | null>(null)
 
-  const [mode, setMode] = useState<"idle" | "recording" | "recorded" | "uploading" | "polling" | "done" | "error" | "phone">("idle")
+  const [mode, setMode] = useState<"idle" | "recorded" | "uploading" | "polling" | "done" | "error" | "phone">("idle")
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null)
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
@@ -53,7 +49,6 @@ export default function SetupPage() {
 
   useEffect(() => {
     return () => {
-      streamRef.current?.getTracks().forEach((t) => t.stop())
       if (pollRef.current) clearInterval(pollRef.current)
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
     }
@@ -76,40 +71,6 @@ export default function SetupPage() {
     setHomeName(filename.replace(/\.\w+$/, ""))
     setMode("recorded")
   }, [setPreviewUrl])
-
-  const startRecording = useCallback(async () => {
-    setError(null)
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment", width: 640, height: 480 },
-        audio: false,
-      })
-      streamRef.current = stream
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        videoRef.current.play()
-      }
-      chunksRef.current = []
-      const recorder = new MediaRecorder(stream, { mimeType: "video/webm" })
-      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data) }
-      recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: "video/webm" })
-        setRecordedBlob(blob)
-        setPreviewUrl(blob)
-        stream.getTracks().forEach((t) => t.stop())
-        setMode("recorded")
-      }
-      recorderRef.current = recorder
-      recorder.start()
-      setMode("recording")
-    } catch (err: unknown) {
-      setError(`Camera error: ${err instanceof Error ? err.message : "Unable to start recording"}`)
-    }
-  }, [setPreviewUrl])
-
-  const stopRecording = useCallback(() => {
-    recorderRef.current?.stop()
-  }, [])
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -225,16 +186,8 @@ export default function SetupPage() {
         )}
 
         {/* ── Step 1: capture ─────────────────────────────────────── */}
-        {(mode === "idle" || mode === "recording" || mode === "recorded") && (
+        {(mode === "idle" || mode === "recorded") && (
           <div className="space-y-6">
-
-            {/* Live camera feed */}
-            <video
-              ref={videoRef}
-              className={cn("w-full rounded-2xl border border-border bg-muted object-cover aspect-video", mode !== "recording" && "hidden")}
-              muted
-              playsInline
-            />
 
             {/* Preview */}
             <video
@@ -244,22 +197,9 @@ export default function SetupPage() {
               controls
             />
 
-            {/* Idle: three action buttons */}
+            {/* Idle: action buttons */}
             {mode === "idle" && (
-              <div className="grid grid-cols-3 gap-3">
-                <button
-                  onClick={startRecording}
-                  className="flex flex-col items-center gap-3 rounded-2xl border border-border bg-card p-6 text-left transition-colors hover:border-mango/50 hover:bg-mango-50"
-                >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-mango-100 text-mango-700">
-                    <Camera className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-foreground text-sm">Record</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Use your camera</p>
-                  </div>
-                </button>
-
+              <div className="grid grid-cols-2 gap-3">
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   className="flex flex-col items-center gap-3 rounded-2xl border border-border bg-card p-6 text-left transition-colors hover:border-mango/50 hover:bg-mango-50"
@@ -288,16 +228,6 @@ export default function SetupPage() {
 
                 <input ref={fileInputRef} type="file" accept="video/*" className="hidden" onChange={handleFileChange} />
               </div>
-            )}
-
-            {/* Recording: stop button */}
-            {mode === "recording" && (
-              <Button
-                onClick={stopRecording}
-                className="w-full bg-destructive hover:bg-destructive/90 text-white rounded-xl h-11"
-              >
-                Stop recording
-              </Button>
             )}
 
             {/* Recorded: name + submit */}
